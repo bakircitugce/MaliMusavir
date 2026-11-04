@@ -54,7 +54,9 @@ class User(Base, TimestampMixin):
     buro_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), index=True)
     email: Mapped[str] = mapped_column(String(320), unique=True, index=True)
     ad_soyad: Mapped[str] = mapped_column(String(200))
-    rol: Mapped[str] = mapped_column(String(30))
+    rol: Mapped[str] = mapped_column(String(30), default="kullanici")
+    password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    is_active: Mapped[bool] = mapped_column(default=True)
 
 
 class Mukellef(TenantModel):
