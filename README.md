@@ -32,6 +32,7 @@ geri bildirimi de `/learning/feedback` endpoint'ine gönderilir. Öğrenme
 Belge detayı açıldığında mevcut öğrenilmiş öneri de açıklama alanında gösterilir.
 “Düzelt” seçeneği gerçek belgede kategori ve not kaydeder; bu karar da öğrenme
 geri bildirimi olarak saklanır.
+“Sonra” seçeneği belgeyi onaylamadan `needs_review` durumunda bırakır.
 
 Varsayılan yerel veritabanı SQLite'tır ve `mali_asistan.sqlite3` dosyasında tutulur.
 Docker/PostgreSQL kullanmak istersen `.env` içindeki `DATABASE_URL` değerini

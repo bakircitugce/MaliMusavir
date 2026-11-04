@@ -190,5 +190,7 @@
 - Dashboard'daki “Düzelt” akışı kategori ve not seçimiyle gerçek review
   endpoint'ine bağlandı; düzeltme kararı öğrenme geri bildirimi olarak da
   kaydediliyor.
+- Dashboard'daki “Sonra” aksiyonu belgeyi onaylamadan `needs_review` durumuna
+  alır; yanlışlıkla otomatik onay verilmesi engellendi.
 - Banka IBAN girişleri boşluklardan arındırılıp büyük harfe normalize ediliyor;
   banka hareketi idempotency kısıtı büro kapsamına alındı.
