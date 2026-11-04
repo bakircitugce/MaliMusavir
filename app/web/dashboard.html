@@ -57,6 +57,13 @@
             <div class="journal-table" id="journal"></div>
             <div class="why"><strong>Bu kayıt neden önerildi?</strong><p id="detailReason"></p></div>
             <div class="learning-note">✦ Her onayınız sistemi bu mükellef için biraz daha akıllı hale getirir.</div>
+            <div class="edit-form" id="editForm" hidden>
+              <label for="categoryInput">Doğru belge kategorisi</label>
+              <select id="categoryInput"><option value="invoice">Fatura</option><option value="z_report">Z raporu</option><option value="bank_statement">Banka ekstresi</option><option value="expense_slip">Gider pusulası</option><option value="smm">Serbest meslek makbuzu</option><option value="unknown">Bilinmiyor</option></select>
+              <label for="noteInput">Not (isteğe bağlı)</label>
+              <textarea id="noteInput" rows="2" placeholder="Bu kararı açıklayan kısa not"></textarea>
+              <button class="approve" id="saveEditButton">✓ Düzeltmeyi kaydet</button>
+            </div>
             <div class="actions"><button class="approve" id="approveButton">✓ Onayla</button><button class="edit" id="editButton">✎ Düzelt</button><button class="later" id="laterButton">◷ Sonra</button></div>
           </section>
         </div>

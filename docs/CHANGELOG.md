@@ -187,5 +187,8 @@
   gösterilir.
 - Dashboard belge detayında, mevcut öğrenme önerisi varsa güven yüzdesiyle
   birlikte “neden bu kayıt?” açıklamasına eklenir.
+- Dashboard'daki “Düzelt” akışı kategori ve not seçimiyle gerçek review
+  endpoint'ine bağlandı; düzeltme kararı öğrenme geri bildirimi olarak da
+  kaydediliyor.
 - Banka IBAN girişleri boşluklardan arındırılıp büyük harfe normalize ediliyor;
   banka hareketi idempotency kısıtı büro kapsamına alındı.
