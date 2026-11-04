@@ -83,6 +83,7 @@ async def test_dashboard_static_assets_are_available() -> None:
     assert "--navy" in css.text
     assert javascript.status_code == 200
     assert "loadRealDocuments" in javascript.text
+    assert "uploadSelectedFile" in javascript.text
 
 
 def test_attached_workbooks_are_importable() -> None:

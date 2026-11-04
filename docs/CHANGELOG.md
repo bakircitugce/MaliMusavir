@@ -192,5 +192,7 @@
   kaydediliyor.
 - Dashboard'daki “Sonra” aksiyonu belgeyi onaylamadan `needs_review` durumuna
   alır; yanlışlıkla otomatik onay verilmesi engellendi.
+- Tenant bilgileriyle açılan dashboard'a belge yükleme düğmesi eklendi;
+  başarılı yüklemeden sonra gerçek onay kuyruğu otomatik yenileniyor.
 - Banka IBAN girişleri boşluklardan arındırılıp büyük harfe normalize ediliyor;
   banka hareketi idempotency kısıtı büro kapsamına alındı.
