@@ -26,6 +26,10 @@ Panel; güven skorunu, sistemin önerdiği yevmiye kaydını ve “Bu kayıt ned
 gerçek belge API'lerine bağlanırken tenant header'ları ve kullanıcı yetkisi
 korunmalıdır.
 
+Gerçek panelde bir belge onaylandığında review kaydıyla birlikte öğrenme
+geri bildirimi de `/learning/feedback` endpoint'ine gönderilir. Öğrenme
+önerileri yine güven eşiği ve tekrar eden insan onaylarıyla sınırlıdır.
+
 Varsayılan yerel veritabanı SQLite'tır ve `mali_asistan.sqlite3` dosyasında tutulur.
 Docker/PostgreSQL kullanmak istersen `.env` içindeki `DATABASE_URL` değerini
 `postgresql+asyncpg://...` adresiyle değiştirip PostgreSQL'i ayrıca başlatabilirsin.

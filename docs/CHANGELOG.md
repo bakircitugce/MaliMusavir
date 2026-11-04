@@ -182,5 +182,8 @@
 - Dashboard, `buro_id` ve `mukellef_id` URL parametreleri verildiğinde gerçek
   `/documents` kuyruğunu yükler ve onay işlemini review API'sine gönderir;
   parametre yoksa güvenli demo görünümü korunur.
+- Gerçek dashboard onayı, başarılı review işleminden sonra öğrenme geri
+  bildirimini de kaydeder; öğrenme kaydı başarısız olursa kullanıcıya açık hata
+  gösterilir.
 - Banka IBAN girişleri boşluklardan arındırılıp büyük harfe normalize ediliyor;
   banka hareketi idempotency kısıtı büro kapsamına alındı.
