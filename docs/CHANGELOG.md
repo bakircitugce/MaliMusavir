@@ -194,5 +194,7 @@
   alır; yanlışlıkla otomatik onay verilmesi engellendi.
 - Tenant bilgileriyle açılan dashboard'a belge yükleme düğmesi eklendi;
   başarılı yüklemeden sonra gerçek onay kuyruğu otomatik yenileniyor.
+- Dashboard belge yüklemesinde 25 MB istemci kontrolü, yükleniyor durumu ve
+  çift gönderim koruması eklendi.
 - Banka IBAN girişleri boşluklardan arındırılıp büyük harfe normalize ediliyor;
   banka hareketi idempotency kısıtı büro kapsamına alındı.

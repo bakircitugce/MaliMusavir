@@ -35,6 +35,8 @@ geri bildirimi olarak saklanır.
 “Sonra” seçeneği belgeyi onaylamadan `needs_review` durumunda bırakır.
 Tenant bilgileriyle açılan panelde “Belge yükle” düğmesi yeni dosyayı belge
 API'sine gönderir ve kuyruk otomatik yenilenir.
+Panel yükleme sırasında tekrar tıklamayı engeller ve 25 MB sınırını önceden
+kontrol eder.
 
 Varsayılan yerel veritabanı SQLite'tır ve `mali_asistan.sqlite3` dosyasında tutulur.
 Docker/PostgreSQL kullanmak istersen `.env` içindeki `DATABASE_URL` değerini
