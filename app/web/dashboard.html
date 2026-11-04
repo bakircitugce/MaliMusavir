@@ -3,73 +3,316 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>MaliAsistan | Onay kuyruğu</title>
+  <title>MaliAsistan | SMMM Kurumsal Muhasebe & Otomasyon Kokpiti</title>
   <link rel="stylesheet" href="/static/dashboard.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 </head>
 <body>
   <div class="shell">
     <aside class="sidebar" id="sidebar">
-      <div class="brand"><strong>Constat</strong><span>Hesap tutuyor.</span></div>
-      <nav aria-label="Ana menü">
-        <a href="#"><span>☼</span> Bugün</a>
-        <a class="active" href="#"><span>▣</span> Onay kuyruğu <b>8</b></a>
-        <a href="#"><span>♙</span> Mükellefler</a>
-        <a href="#"><span>▤</span> Banka hareketleri</a>
-        <a href="#"><span>⚙</span> Ayarlar</a>
+      <div class="brand">
+        <strong>MaliAsistan</strong>
+        <span>SMMM Kurumsal Otomasyon</span>
+      </div>
+      <nav aria-label="Ana menü" id="sidebarNav">
+        <a href="#queue" class="nav-link active" data-view="queue"><span>▣</span> Onay Kuyruğu <b id="navQueueBadge">8</b></a>
+        <a href="#bank" class="nav-link" data-view="bank"><span>▤</span> Banka & POS <b id="navBankBadge">3</b></a>
+        <a href="#ledger" class="nav-link" data-view="ledger"><span>⚖</span> Yevmiye & Mizan</a>
+        <a href="#erp" class="nav-link" data-view="erp"><span>🔄</span> ERP Aktarımı</a>
+        <a href="#einvoice" class="nav-link" data-view="einvoice"><span>⚡</span> e-Fatura Havuzu</a>
+        <a href="#tax" class="nav-link" data-view="tax"><span>§</span> Vergi & Hadler</a>
       </nav>
-      <small class="version">MaliAsistan · Prototip</small>
+      <div class="tenant-badge" id="tenantBadge">
+        <small class="muted">Çalışma Modu</small>
+        <strong id="modeLabel">Demo Modu</strong>
+      </div>
+      <small class="version">MaliAsistan v0.2.0 · Faz 0-7 Tam Entegre</small>
     </aside>
 
     <main class="main">
       <header class="topbar">
         <button class="menu-button" id="menuButton" aria-label="Menüyü aç">☰</button>
-        <div><span class="muted">Varsayılan Büro</span><strong>Kasım 2026</strong></div>
-        <div class="top-actions"><span class="online">●</span> Çalışıyor <button class="language">TR⌄</button></div>
+        <div class="top-title">
+          <span class="muted" id="topBuroLabel">Varsayılan Büro</span>
+          <strong id="topPeriodLabel">Kasım 2026</strong>
+        </div>
+        <div class="top-actions">
+          <span class="online">●</span> <span id="systemStatus">Sistem Hazır</span>
+          <button class="action-sm" id="btnSyncAll" title="Tüm verileri senkronize et">⟳ Yenile</button>
+        </div>
       </header>
 
       <section class="content">
-        <div class="page-heading">
-          <div>
-            <p class="eyebrow">MALİ MÜŞAVİR PANELİ</p>
-            <h1>Onay kuyruğu</h1>
-            <p class="muted"><span id="queueCount">8</span> belge kararını bekliyor. Sistem önerir, son kararı siz verirsiniz.</p>
-          </div>
-          <div class="heading-actions"><label class="upload-button" id="uploadButton" for="uploadInput">＋ Belge yükle</label><input id="uploadInput" type="file" accept=".xml,.pdf,.jpg,.jpeg,.png,.xlsx,.xls,.csv" hidden><button class="outline-button" id="helpButton">? Nasıl çalışır?</button></div>
-        </div>
-
-        <div class="stats">
-          <div><span class="stat-icon purple">◈</span><div><strong>8</strong><span>Bekleyen belge</span></div></div>
-          <div><span class="stat-icon green">✓</span><div><strong>%86</strong><span>Ortalama güven</span></div></div>
-          <div><span class="stat-icon orange">↗</span><div><strong>24</strong><span>Bu ay öğrenilen ilişki</span></div></div>
-        </div>
-
-        <div class="workspace">
-          <section class="queue-panel" aria-label="Belge kuyruğu">
-            <div class="panel-heading"><h2>İnceleme bekleyenler</h2><select id="queueFilter"><option value="all">Tümü</option><option value="high">Yüksek güven</option><option value="low">İnceleme gerekli</option></select></div>
-            <div id="queue" class="queue"><div class="loading">Belgeler yükleniyor...</div></div>
-          </section>
-
-          <section class="detail-card" id="detail" aria-live="polite">
-            <div class="detail-top"><div><span class="tag" id="detailType">E-FATURA</span><h2 id="detailTitle"></h2><p class="muted" id="detailSubtitle"></p></div><span class="confidence high" id="detailConfidence"></span></div>
-            <div class="document-meta" id="detailMeta"></div>
-            <p class="source-note" id="sourceNote">Demo görünümü · Gerçek veriler için URL'ye büro ve mükellef kimliği ekleyin.</p>
-            <div class="section-title"><span>ÖNERİLEN KAYIT</span><small>Sistem önerisi</small></div>
-            <div class="journal-table" id="journal"></div>
-            <div class="why"><strong>Bu kayıt neden önerildi?</strong><p id="detailReason"></p></div>
-            <div class="learning-note">✦ Her onayınız sistemi bu mükellef için biraz daha akıllı hale getirir.</div>
-            <div class="edit-form" id="editForm" hidden>
-              <label for="categoryInput">Doğru belge kategorisi</label>
-              <select id="categoryInput"><option value="invoice">Fatura</option><option value="z_report">Z raporu</option><option value="bank_statement">Banka ekstresi</option><option value="expense_slip">Gider pusulası</option><option value="smm">Serbest meslek makbuzu</option><option value="unknown">Bilinmiyor</option></select>
-              <label for="noteInput">Not (isteğe bağlı)</label>
-              <textarea id="noteInput" rows="2" placeholder="Bu kararı açıklayan kısa not"></textarea>
-              <button class="approve" id="saveEditButton">✓ Düzeltmeyi kaydet</button>
+        <!-- TAB 1: ONAY KUYRUĞU (MEVCUT) -->
+        <div id="viewQueue" class="tab-view active">
+          <div class="page-heading">
+            <div>
+              <p class="eyebrow">MALİ MÜŞAVİR PANELİ</p>
+              <h1>Onay kuyruğu</h1>
+              <p class="muted"><span id="queueCount">8</span> belge kararınızı bekliyor. Sistem mevzuat kurallarıyla önerir, nihai kararı siz verirsiniz.</p>
             </div>
-            <div class="actions"><button class="approve" id="approveButton">✓ Onayla</button><button class="edit" id="editButton">✎ Düzelt</button><button class="later" id="laterButton">◷ Sonra</button></div>
-          </section>
+            <div class="heading-actions">
+              <label class="upload-button" id="uploadButton" for="uploadInput">＋ Belge Yükle</label>
+              <input id="uploadInput" type="file" accept=".xml,.pdf,.jpg,.jpeg,.png,.xlsx,.xls,.csv" hidden>
+              <button class="outline-button" id="helpButton">? Nasıl Çalışır?</button>
+            </div>
+          </div>
+
+          <div class="stats">
+            <div><span class="stat-icon purple">◈</span><div><strong id="statPendingCount">8</strong><span>Bekleyen Belge</span></div></div>
+            <div><span class="stat-icon green">✓</span><div><strong>%91</strong><span>Ortalama Güven</span></div></div>
+            <div><span class="stat-icon orange">↗</span><div><strong id="statLearningCount">28</strong><span>Öğrenilen İlişki</span></div></div>
+          </div>
+
+          <div class="workspace">
+            <section class="queue-panel" aria-label="Belge kuyruğu">
+              <div class="panel-heading">
+                <h2>İnceleme Bekleyenler</h2>
+                <select id="queueFilter">
+                  <option value="all">Tümü</option>
+                  <option value="high">Yüksek Güven (>=%80)</option>
+                  <option value="low">İnceleme Gerekli (<%80)</option>
+                </select>
+              </div>
+              <div id="queue" class="queue"><div class="loading">Belgeler yükleniyor...</div></div>
+            </section>
+
+            <section class="detail-card" id="detail" aria-live="polite">
+              <div class="detail-top">
+                <div>
+                  <span class="tag" id="detailType">E-FATURA</span>
+                  <h2 id="detailTitle">Yıldız Yem San. A.Ş.</h2>
+                  <p class="muted" id="detailSubtitle">Örnek Gıda Ltd.</p>
+                </div>
+                <span class="confidence high" id="detailConfidence">%94 · Yüksek Güven</span>
+              </div>
+              <div class="document-meta" id="detailMeta"></div>
+              <p class="source-note" id="sourceNote">Demo görünümü · Gerçek veriler için URL'ye ?buro_id=...&mukellef_id=... ekleyin.</p>
+              <div class="section-title"><span>ÖNERİLEN YEVMİYE KAYDI</span><small>Kural Motoru & Mevzuat</small></div>
+              <div class="journal-table" id="journal"></div>
+              <div class="why">
+                <strong>Bu kayıt neden önerildi?</strong>
+                <p id="detailReason"></p>
+              </div>
+              <div class="learning-note">✦ Her onayınız sistemi bu mükellef ve satıcı için daha akıllı hale getirir.</div>
+              <div class="edit-form" id="editForm" hidden>
+                <label for="categoryInput">Doğru Belge Kategorisi</label>
+                <select id="categoryInput">
+                  <option value="invoice">Fatura</option>
+                  <option value="z_report">Z Raporu</option>
+                  <option value="bank_statement">Banka Ekstresi</option>
+                  <option value="expense_slip">Gider Pusulası</option>
+                  <option value="smm">Serbest Meslek Makbuzu</option>
+                  <option value="unknown">Bilinmiyor</option>
+                </select>
+                <label for="noteInput">Not (İsteğe bağlı)</label>
+                <textarea id="noteInput" rows="2" placeholder="Düzeltme gerekçesini yazabilirsiniz"></textarea>
+                <button class="approve" id="saveEditButton">✓ Düzeltmeyi Kaydet</button>
+              </div>
+              <div class="actions">
+                <button class="approve" id="approveButton">✓ Onayla</button>
+                <button class="edit" id="editButton">✎ Düzelt</button>
+                <button class="later" id="laterButton">◷ Sonra</button>
+              </div>
+            </section>
+          </div>
+        </div>
+
+        <!-- TAB 2: BANKA & POS MUTABAKATI -->
+        <div id="viewBank" class="tab-view" hidden>
+          <div class="page-heading">
+            <div>
+              <p class="eyebrow">FAZ 3 · BANKA & POS MUTABAKATI</p>
+              <h1>Banka Hareketleri & Eşleştirme</h1>
+              <p class="muted">Ekstreleri yükleyin, tek tıkla aday yevmiye fişleriyle mutabakat sağlayın veya POS mahsubu üretin.</p>
+            </div>
+            <div class="heading-actions">
+              <label class="upload-button" for="bankUploadInput">＋ Ekstre Yükle (CSV/XLSX/MT940)</label>
+              <input id="bankUploadInput" type="file" accept=".csv,.xlsx,.xls,.txt,.sta" hidden>
+            </div>
+          </div>
+
+          <div class="bank-grid">
+            <div class="card panel-box">
+              <div class="panel-heading">
+                <h2>Banka Hesapları</h2>
+                <span class="badge" id="bankAccountsCount">2 Hesap</span>
+              </div>
+              <div id="bankAccountsList" class="table-list"></div>
+            </div>
+
+            <div class="card panel-box">
+              <div class="panel-heading">
+                <h2>108 POS Yaşlandırma Raporu</h2>
+                <span class="tag">0-61+ Gün Vade</span>
+              </div>
+              <div id="posAgingTable" class="table-list"></div>
+            </div>
+          </div>
+
+          <div class="card panel-box full-box">
+            <div class="panel-heading">
+              <h2>Eşleşme Bekleyen Banka Hareketleri & Önerilen Aday Fişler</h2>
+              <span class="muted">Tutar ve tarih yakınlığına göre eşleşen kayıtlar</span>
+            </div>
+            <div id="reconcileQueue" class="reconcile-list"></div>
+          </div>
+        </div>
+
+        <!-- TAB 3: YEVMİYE & MİZAN -->
+        <div id="viewLedger" class="tab-view" hidden>
+          <div class="page-heading">
+            <div>
+              <p class="eyebrow">FAZ 2 · RESMİ DEFTER & RAPORLAR</p>
+              <h1>Yevmiye Fişleri & Canlı Mizan</h1>
+              <p class="muted">Çift taraflı borç-alacak dengesi kesinleştirilmiş yevmiye fişleri ve kümülatif mizan tablosu.</p>
+            </div>
+            <div class="heading-actions">
+              <button class="outline-button" id="btnRefreshLedger">⟳ Mizanı Yenile</button>
+            </div>
+          </div>
+
+          <div class="ledger-tabs">
+            <button class="tab-btn active" id="tabBtnTrialBalance">Canlı Mizan Tablosu</button>
+            <button class="tab-btn" id="tabBtnJournalEntries">Onaylı Yevmiye Fişleri</button>
+          </div>
+
+          <div id="ledgerTrialBalanceView" class="card panel-box full-box">
+            <div class="panel-heading">
+              <h2>Mizan Özeti (TDHP 1-9)</h2>
+              <div class="balance-tag" id="mizanBalanceStatus">✓ Fişler Dengede (Borç = Alacak)</div>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table" id="trialBalanceTable">
+                <thead>
+                  <tr>
+                    <th>Hesap Kodu</th>
+                    <th>Hesap Adı</th>
+                    <th class="num">Borç Toplamı</th>
+                    <th class="num">Alacak Toplamı</th>
+                    <th class="num">Bakiye</th>
+                  </tr>
+                </thead>
+                <tbody id="trialBalanceBody"></tbody>
+                <tfoot id="trialBalanceFoot"></tfoot>
+              </table>
+            </div>
+          </div>
+
+          <div id="ledgerEntriesView" class="card panel-box full-box" hidden>
+            <div class="panel-heading">
+              <h2>Yevmiye Fişleri</h2>
+              <span class="muted">Ters kayıt (reversal) veya detay inceleme</span>
+            </div>
+            <div id="journalEntriesList" class="entries-list"></div>
+          </div>
+        </div>
+
+        <!-- TAB 4: ERP AKTARIMI -->
+        <div id="viewErp" class="tab-view" hidden>
+          <div class="page-heading">
+            <div>
+              <p class="eyebrow">FAZ 5 · ÇOKLU ERP ENTEGRASYONU</p>
+              <h1>ERP Dışa Aktarım & Log İzleme</h1>
+              <p class="muted">Onaylanmış yevmiye kayıtlarını Logo Tiger/GO XML veya Evrensel CSV formatına aktarın.</p>
+            </div>
+            <div class="heading-actions">
+              <select id="erpProviderSelect" class="form-select">
+                <option value="logo">Logo Tiger / GO / Wings (XML)</option>
+                <option value="universal_csv">Evrensel CSV (Luca, Zirve, Orka)</option>
+                <option value="fake">Test Bellek Adaptörü</option>
+              </select>
+              <button class="upload-button" id="btnTriggerExport">Seçili Fişleri Dışa Aktar</button>
+            </div>
+          </div>
+
+          <div class="card panel-box full-box">
+            <div class="panel-heading">
+              <h2>Son ERP Aktarım Geçmişi</h2>
+              <span class="muted">İdempotency anahtarı ile korunan aktarım sonuçları</span>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table" id="erpExportsTable">
+                <thead>
+                  <tr>
+                    <th>Durum</th>
+                    <th>Fiş ID</th>
+                    <th>Dış Referans</th>
+                    <th>İdempotency Anahtarı</th>
+                    <th>Tarih</th>
+                    <th>İşlem</th>
+                  </tr>
+                </thead>
+                <tbody id="erpExportsBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 5: E-FATURA HAVUZU -->
+        <div id="viewEinvoice" class="tab-view" hidden>
+          <div class="page-heading">
+            <div>
+              <p class="eyebrow">FAZ 4 · E-FATURA & E-ARŞİV HAVUZU</p>
+              <h1>Entegratör Senkronizasyonu</h1>
+              <p class="muted">e-Fatura entegratörünüzden gelen faturaları tek tıkla çekin ve otomatik onay kuyruğuna alın.</p>
+            </div>
+            <div class="heading-actions">
+              <input type="date" id="einvoiceStartDate" class="date-input" value="2026-11-01">
+              <input type="date" id="einvoiceEndDate" class="date-input" value="2026-11-04">
+              <button class="upload-button" id="btnSyncEInvoice">⚡ Faturaları Çek</button>
+            </div>
+          </div>
+
+          <div class="stats">
+            <div><span class="stat-icon purple">⚡</span><div><strong>Aktif</strong><span>Entegratör Bağlantısı</span></div></div>
+            <div><span class="stat-icon green">📥</span><div><strong id="statEInvIncoming">14</strong><span>Senkronize Edilen</span></div></div>
+            <div><span class="stat-icon orange">🛡</span><div><strong id="statEInvDuplicates">0</strong><span>Mükerrer Engellendi</span></div></div>
+          </div>
+
+          <div class="card panel-box full-box">
+            <div class="panel-heading">
+              <h2>Gelen e-Fatura Havuzu</h2>
+              <span class="muted">GİB UBL-TR 2.1 Doğrulanmış Belgeler</span>
+            </div>
+            <div id="einvoiceList" class="table-list"></div>
+          </div>
+        </div>
+
+        <!-- TAB 6: VERGİ & HADLER -->
+        <div id="viewTax" class="tab-view" hidden>
+          <div class="page-heading">
+            <div>
+              <p class="eyebrow">MEVZUAT & BEYANNAME DENETİMİ</p>
+              <h1>Vergi Hadleri & KDV Dağılımı</h1>
+              <p class="muted">Binek araç KKEG, Tevkifat oranları ve dönemsel KDV matrah hesaplamaları.</p>
+            </div>
+          </div>
+
+          <div class="bank-grid">
+            <div class="card panel-box">
+              <div class="panel-heading">
+                <h2>Yürürlükteki Vergi Parametreleri</h2>
+                <span class="tag">Büro Hadleri</span>
+              </div>
+              <div id="taxParametersList" class="table-list"></div>
+            </div>
+
+            <div class="card panel-box">
+              <div class="panel-heading">
+                <h2>Dönemsel KDV1 Matrah & Hesaplanan Özeti</h2>
+                <span class="badge">Kasım 2026</span>
+              </div>
+              <div id="taxSummaryBox" class="table-list"></div>
+            </div>
+          </div>
         </div>
       </section>
     </main>
   </div>
+
   <div class="toast" id="toast" role="status"></div>
   <script src="/static/dashboard.js"></script>
 </body>

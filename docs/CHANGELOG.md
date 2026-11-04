@@ -202,3 +202,10 @@
   Türkçe metinlerle gösteriliyor.
 - Banka IBAN girişleri boşluklardan arındırılıp büyük harfe normalize ediliyor;
   banka hareketi idempotency kısıtı büro kapsamına alındı.
+- Logo Tiger / GO resmi `GL_SLIPS` XML formatı adaptörü (`LogoTigerERPExportAdapter`) eklendi; yevmiye satırları borç/alacak yönü ve GL kodlarıyla Logo standartlarında oluşturuluyor.
+- Luca, Zirve ve Orka muhasebe yazılımları için standart CSV yevmiye fişi adaptörü (`UniversalCSVERPExportAdapter`) eklendi.
+- Global `erp_registry`'ye `logo`, `universal_csv` ve `fake` adaptörleri kaydedildi; retry ve export servisleriyle entegre edildi.
+- e-Fatura senkronizasyon servisi (`sync_incoming_invoices`) ve API router'ı (`/einvoice/providers`, `/einvoice/sync`, `/einvoice/submit`) eklendi; çekilen UBL faturaları otomatik Belge havuzuna ve ayrıştırma kuyruğuna alınıyor.
+- Yevmiye fişleri ve canlı mizan API router'ı (`/ledger/entries`, `/ledger/entries/{id}`, `/ledger/trial-balance`, `/ledger/entries/{id}/reverse`) eklendi.
+- SMMM Kokpiti (`/app`) çok sekmeli tam kurumsal panele genişletildi: Onay Kuyruğu, Banka & POS Mutabakatı (108 POS yaşlandırma), Yevmiye & Canlı Mizan, ERP Aktarımı (XML/CSV indirme), e-Fatura Havuzu ve Vergi Hadleri.
+

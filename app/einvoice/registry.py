@@ -27,3 +27,6 @@ class EInvoiceAdapterRegistry:
 
     def providers(self) -> tuple[str, ...]:
         return tuple(sorted(self._factories))
+
+
+einvoice_registry = EInvoiceAdapterRegistry()
