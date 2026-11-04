@@ -185,5 +185,7 @@
 - Gerçek dashboard onayı, başarılı review işleminden sonra öğrenme geri
   bildirimini de kaydeder; öğrenme kaydı başarısız olursa kullanıcıya açık hata
   gösterilir.
+- Dashboard belge detayında, mevcut öğrenme önerisi varsa güven yüzdesiyle
+  birlikte “neden bu kayıt?” açıklamasına eklenir.
 - Banka IBAN girişleri boşluklardan arındırılıp büyük harfe normalize ediliyor;
   banka hareketi idempotency kısıtı büro kapsamına alındı.
