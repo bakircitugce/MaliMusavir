@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MaliAsistan | Onay kuyruğu</title>
+  <link rel="stylesheet" href="/static/dashboard.css">
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar" id="sidebar">
+      <div class="brand"><strong>Constat</strong><span>Hesap tutuyor.</span></div>
+      <nav aria-label="Ana menü">
+        <a href="#"><span>☼</span> Bugün</a>
+        <a class="active" href="#"><span>▣</span> Onay kuyruğu <b>8</b></a>
+        <a href="#"><span>♙</span> Mükellefler</a>
+        <a href="#"><span>▤</span> Banka hareketleri</a>
+        <a href="#"><span>⚙</span> Ayarlar</a>
+      </nav>
+      <small class="version">MaliAsistan · Prototip</small>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <button class="menu-button" id="menuButton" aria-label="Menüyü aç">☰</button>
+        <div><span class="muted">Varsayılan Büro</span><strong>Kasım 2026</strong></div>
+        <div class="top-actions"><span class="online">●</span> Çalışıyor <button class="language">TR⌄</button></div>
+      </header>
+
+      <section class="content">
+        <div class="page-heading">
+          <div>
+            <p class="eyebrow">MALİ MÜŞAVİR PANELİ</p>
+            <h1>Onay kuyruğu</h1>
+            <p class="muted"><span id="queueCount">8</span> belge kararını bekliyor. Sistem önerir, son kararı siz verirsiniz.</p>
+          </div>
+          <button class="outline-button" id="helpButton">? Nasıl çalışır?</button>
+        </div>
+
+        <div class="stats">
+          <div><span class="stat-icon purple">◈</span><div><strong>8</strong><span>Bekleyen belge</span></div></div>
+          <div><span class="stat-icon green">✓</span><div><strong>%86</strong><span>Ortalama güven</span></div></div>
+          <div><span class="stat-icon orange">↗</span><div><strong>24</strong><span>Bu ay öğrenilen ilişki</span></div></div>
+        </div>
+
+        <div class="workspace">
+          <section class="queue-panel" aria-label="Belge kuyruğu">
+            <div class="panel-heading"><h2>İnceleme bekleyenler</h2><select id="queueFilter"><option value="all">Tümü</option><option value="high">Yüksek güven</option><option value="low">İnceleme gerekli</option></select></div>
+            <div id="queue" class="queue"><div class="loading">Belgeler yükleniyor...</div></div>
+          </section>
+
+          <section class="detail-card" id="detail" aria-live="polite">
+            <div class="detail-top"><div><span class="tag" id="detailType">E-FATURA</span><h2 id="detailTitle"></h2><p class="muted" id="detailSubtitle"></p></div><span class="confidence high" id="detailConfidence"></span></div>
+            <div class="document-meta" id="detailMeta"></div>
+            <p class="source-note" id="sourceNote">Demo görünümü · Gerçek veriler için URL'ye büro ve mükellef kimliği ekleyin.</p>
+            <div class="section-title"><span>ÖNERİLEN KAYIT</span><small>Sistem önerisi</small></div>
+            <div class="journal-table" id="journal"></div>
+            <div class="why"><strong>Bu kayıt neden önerildi?</strong><p id="detailReason"></p></div>
+            <div class="learning-note">✦ Her onayınız sistemi bu mükellef için biraz daha akıllı hale getirir.</div>
+            <div class="actions"><button class="approve" id="approveButton">✓ Onayla</button><button class="edit" id="editButton">✎ Düzelt</button><button class="later" id="laterButton">◷ Sonra</button></div>
+          </section>
+        </div>
+      </section>
+    </main>
+  </div>
+  <div class="toast" id="toast" role="status"></div>
+  <script src="/static/dashboard.js"></script>
+</body>
+</html>
