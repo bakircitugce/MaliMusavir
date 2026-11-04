@@ -196,5 +196,7 @@
   başarılı yüklemeden sonra gerçek onay kuyruğu otomatik yenileniyor.
 - Dashboard belge yüklemesinde 25 MB istemci kontrolü, yükleniyor durumu ve
   çift gönderim koruması eklendi.
+- Dashboard belge yüklemesi başarılı olduğunda `/documents/{id}/extract`
+  endpoint'ini de çağırır; işleme başlatılamazsa kullanıcıya açık hata gösterir.
 - Banka IBAN girişleri boşluklardan arındırılıp büyük harfe normalize ediliyor;
   banka hareketi idempotency kısıtı büro kapsamına alındı.
