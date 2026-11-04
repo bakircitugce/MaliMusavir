@@ -198,5 +198,7 @@
   çift gönderim koruması eklendi.
 - Dashboard belge yüklemesi başarılı olduğunda `/documents/{id}/extract`
   endpoint'ini de çağırır; işleme başlatılamazsa kullanıcıya açık hata gösterir.
+- Gerçek belge kuyruğu kartlarında extraction ve review durumları açıklayıcı
+  Türkçe metinlerle gösteriliyor.
 - Banka IBAN girişleri boşluklardan arındırılıp büyük harfe normalize ediliyor;
   banka hareketi idempotency kısıtı büro kapsamına alındı.

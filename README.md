@@ -39,6 +39,8 @@ Panel yükleme sırasında tekrar tıklamayı engeller ve 25 MB sınırını ön
 kontrol eder.
 Yükleme tamamlandığında belge işleme endpoint'i de başlatılır; işleme hatası
 kullanıcıya açıkça gösterilir.
+Kuyruk kartlarında belgenin işleniyor, hazır veya inceleme gerekli durumu da
+gösterilir.
 
 Varsayılan yerel veritabanı SQLite'tır ve `mali_asistan.sqlite3` dosyasında tutulur.
 Docker/PostgreSQL kullanmak istersen `.env` içindeki `DATABASE_URL` değerini

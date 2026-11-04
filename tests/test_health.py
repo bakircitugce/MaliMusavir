@@ -86,6 +86,7 @@ async def test_dashboard_static_assets_are_available() -> None:
     assert "uploadSelectedFile" in javascript.text
     assert "25*1024*1024" in javascript.text
     assert "/extract" in javascript.text
+    assert "İşleniyor" in javascript.text
 
 
 def test_attached_workbooks_are_importable() -> None:
