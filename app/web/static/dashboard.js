@@ -1,136 +1,7 @@
 // Constat - MaliAsistan SMMM Kokpit & Kullanıcı Yönetimi Motoru
 
-// 1. Örnek Veri Seti (Görsellerdeki Canlı Kuyruk ile Birebir)
-const sampleQueueItems = [
-  {
-    type: "E-FATURA",
-    title: "Yıldız Yem San. A.Ş.",
-    subtitle: "Örnek Gıda Ltd.",
-    amount: "12.480,00 ₺",
-    confidence: 94,
-    level: "high",
-    date: "03.11.2026",
-    docNo: "YYS2026000041812",
-    desc: "Piliç yemi, 1.200 kg",
-    kdv: "123,56 ₺",
-    reason: "Bu satıcıdan son 14 alış 153.01.001 Ticari Mal hesabına gitti. Mükellefin NACE kodu toptan ticaret; mal alışı. KDV %1, mükellefin alt kodu 191.01.001.",
-    rows: [
-      ["153.01.001 TİCARİ MAL A", "12.356,44", ""],
-      ["191.01.001 %1 İNDİRİLECEK KDV", "123,56", ""],
-      ["320.01.011 YILDIZ YEM SAN. A.Ş.", "", "12.480,00"]
-    ]
-  },
-  {
-    type: "BANKA EKSTRESİ",
-    title: "Ziraat Bankası",
-    subtitle: "Örnek Gıda Ltd.",
-    amount: "7.056,00 ₺",
-    confidence: 88,
-    level: "high",
-    date: "02.11.2026",
-    docNo: "ZRT-2026-9912",
-    desc: "Gelen Havale - Cari Mahsup",
-    kdv: "0,00 ₺",
-    reason: "Açıklamadaki satıcı adı ve önceki onaylar 320 Satıcılar cari hesabıyla %88 güvenle eşleşti.",
-    rows: [
-      ["320.01.001 SATICILAR HESABI", "7.056,00", ""],
-      ["102.01.002 BANKALAR (Ziraat)", "", "7.056,00"]
-    ]
-  },
-  {
-    type: "E-FATURA",
-    title: "Bölge Elektrik Perakende A.Ş.",
-    subtitle: "Örnek Gıda Ltd.",
-    amount: "3.480,00 ₺",
-    confidence: 97,
-    level: "high",
-    date: "01.11.2026",
-    docNo: "BEP2026001928",
-    desc: "Elektrik Sarfiyat Faturası",
-    kdv: "580,00 ₺",
-    reason: "Elektrik sağlayıcısı için büro mevzuat hafızasında daha önce onaylanan tüm kayıtlar 770 Genel Yönetim gider hesabını kullanmaktadır.",
-    rows: [
-      ["770.01.001 ELEKTRİK GİDERLERİ", "2.900,00", ""],
-      ["191.01.020 İNDİRİLECEK KDV %20", "580,00", ""],
-      ["320.01.005 BÖLGE ELEKTRİK A.Ş.", "", "3.480,00"]
-    ]
-  },
-  {
-    type: "E-FATURA",
-    title: "Çağlar Petrol Ltd.",
-    subtitle: "Örnek Gıda Ltd.",
-    amount: "2.400,00 ₺",
-    confidence: 71,
-    level: "medium",
-    date: "31.10.2026",
-    docNo: "CGL2026000412",
-    desc: "Motorin Yakıt Alımı",
-    kdv: "400,00 ₺",
-    reason: "Binek oto akaryakıtında GVK m.40/5 uyarınca %70 gider (1.400 TL), %30 KKEG (600 TL) ayrımı otomatik hesaplandı.",
-    rows: [
-      ["770.03.001 AKARYAKIT GİDERİ (%70)", "1.400,00", ""],
-      ["689.01.001 KANUNEN KABUL EDİLMEYEN GİDER", "600,00", ""],
-      ["191.01.020 İNDİRİLECEK KDV", "400,00", ""],
-      ["100.01.001 NAKİT KASA", "", "2.400,00"]
-    ]
-  },
-  {
-    type: "Z RAPORU",
-    title: "Yazar kasa 1",
-    subtitle: "Mavi Kafe",
-    amount: "12.000,00 ₺",
-    confidence: 90,
-    level: "high",
-    date: "31.10.2026",
-    docNo: "Z-142",
-    desc: "Gün Sonu Z Raporu",
-    kdv: "1.090,91 ₺",
-    reason: "Gün sonu Z toplamı POS (108) ve nakit kasa (100) hareketleriyle %90 tutarlıdır.",
-    rows: [
-      ["100.01.001 MERKEZ KASA (Nakit)", "4.000,00", ""],
-      ["108.01.001 DİĞER HAZIR DEĞERLER (POS)", "8.000,00", ""],
-      ["600.01.010 YURTİÇİ SATIŞLAR (%10 KDV)", "", "10.909,09"],
-      ["391.01.010 HESAPLANAN KDV %10", "", "1.090,91"]
-    ]
-  },
-  {
-    type: "BANKA EKSTRESİ",
-    title: "Akbank",
-    subtitle: "Örnek Gıda Ltd.",
-    amount: "15.000,00 ₺",
-    confidence: 42,
-    level: "low",
-    date: "30.10.2026",
-    docNo: "AKB-99812",
-    desc: "Bilinmeyen EFT Girişi",
-    kdv: "0,00 ₺",
-    reason: "Açıklamada cari VKN veya unvan net tespit edilemedi. İnceleme ve manuel hesap seçimi önerilir.",
-    rows: [
-      ["102.01.003 AKBANK TİCARİ HESAP", "15.000,00", ""],
-      ["329.01.001 DİĞER TİCARİ BORÇLAR", "", "15.000,00"]
-    ]
-  },
-  {
-    type: "E-FATURA",
-    title: "Kuzey Ambalaj San. Ltd.",
-    subtitle: "Mavi Kafe",
-    amount: "5.000,00 ₺",
-    confidence: 83,
-    level: "high",
-    date: "29.10.2026",
-    docNo: "KZY202600120",
-    desc: "Koli ve Paketleme Malzemesi",
-    kdv: "833,33 ₺",
-    reason: "Ambalaj malzemeleri geçmiş kayıtlar doğrultusunda 150 İlk Madde Malzeme stok hesabına yönlendirildi.",
-    rows: [
-      ["150.01.001 İLK MADDE VE MALZEME", "4.166,67", ""],
-      ["191.01.020 İNDİRİLECEK KDV", "833,33", ""],
-      ["320.01.022 KUZEY AMBALAJ SAN. LTD.", "", "5.000,00"]
-    ]
-  }
-];
-
-let items = [...sampleQueueItems];
+// 1. Kuyruk durumu (gerçek veri: GET /documents/queue)
+let items = [];
 let selected = 0;
 let realMode = false;
 let pollTimer = null;
@@ -247,6 +118,7 @@ async function initAuth() {
       if (res.ok) {
         currentUser = await res.json();
         await ensureMukellefSelected();
+        loadRealDocuments();
         updateUserUI();
         return;
       }
@@ -366,6 +238,7 @@ async function performLogin(email, password) {
     currentUser = data.user;
     localStorage.setItem("maliasistan_token", authToken);
     await ensureMukellefSelected();
+    loadRealDocuments();
     updateUserUI();
     hideLoginModal();
     showToast(`Hoş geldiniz, ${currentUser.ad_soyad} (${ROLE_LABELS[currentUser.rol] || currentUser.rol})!`);
@@ -521,175 +394,258 @@ async function toggleUserStatus(userId, makeActive) {
   } catch (_) {}
 }
 
-// 5. Belge Kuyruğu Render (Onay Kuyruğu)
+// 5. Belge Kuyruğu (gerçek veri)
+const CAN_APPROVE = () => currentUser && (currentUser.rol === "admin" || currentUser.rol === "musavir");
+const CAN_WRITE = () => currentUser && currentUser.rol !== "mukellef";
+
+function formatTL(value) {
+  const n = Number(value);
+  if (value === null || value === undefined || value === "" || Number.isNaN(n)) return "-";
+  return n.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " ₺";
+}
+
+function formatDate(iso) {
+  if (!iso) return "-";
+  const [y, m, d] = String(iso).slice(0, 10).split("-");
+  return d && m && y ? `${d}.${m}.${y}` : iso;
+}
+
+function toViewItem(doc) {
+  const inv = doc.invoice;
+  const posting = doc.posting || {};
+  const direction = posting.direction;
+  const party = inv ? (direction === "sales" ? inv.customer : inv.supplier) : null;
+  let type = (doc.document_category || doc.document_type || "belge").toUpperCase();
+  if (inv) type = direction === "sales" ? "SATIŞ FATURASI" : direction === "purchase" ? "ALIŞ FATURASI" : "E-FATURA";
+  else if (doc.document_category === "z_report") type = "Z RAPORU";
+  else if (doc.document_type === "image") type = "FİŞ / GÖRSEL";
+
+  let status = "İşleniyor";
+  let level = "med";
+  if (doc.extraction_status === "failed" || posting.status === "needs_review" || doc.review_status === "needs_review") {
+    status = "İnceleme gerekli"; level = "low";
+  } else if (posting.status === "draft_ready") {
+    status = "Onaya hazır"; level = "high";
+  } else if (doc.extraction_status === "pending" || doc.extraction_status === "processing") {
+    status = "İşleniyor"; level = "med";
+  }
+  const reasons = (posting.reasons && posting.reasons.length) ? posting.reasons
+    : (doc.extraction_error ? [doc.extraction_error] : ["Belge işleniyor..."]);
+  return {
+    id: doc.id,
+    type,
+    status,
+    level,
+    title: (party && party.name) || doc.filename,
+    vkn: party && party.tax_id,
+    docNo: inv ? inv.invoice_id : doc.filename,
+    date: inv ? formatDate(inv.issue_date) : formatDate(doc.created_at),
+    amount: inv ? formatTL(inv.payable_amount) : "-",
+    base: inv ? formatTL(inv.tax_exclusive_amount) : "-",
+    kdv: inv ? formatTL(inv.tax_total) : "-",
+    confidence: posting.confidence ? Math.round(Number(posting.confidence) * 100) : 0,
+    reason: reasons.join(" "),
+    entry: doc.entry,
+    reviewStatus: doc.review_status,
+    canCorrect: Boolean(inv)
+  };
+}
+
 function renderQueue() {
   const q = $("queue");
   if (!q) return;
-
-  if (items.length === 0) {
-    q.innerHTML = '<div class="loading">İncelenecek bekleyen belge bulunmuyor.</div>';
-    renderDetail();
-    return;
-  }
-
-  q.innerHTML = items.map((item, idx) => {
-    const active = idx === selected ? "active" : "";
-    const confClass = item.confidence >= 80 ? "high" : (item.confidence >= 50 ? "med" : "low");
-
-    return `
-      <div class="queue-item ${active}" data-action="select-item" data-index="${idx}">
-        <div class="queue-item-top">
-          <span class="tag-doc">${escapeHtml(item.type)}</span>
-          <span class="badge-conf ${confClass}">%${item.confidence}</span>
-        </div>
-        <div class="queue-item-title">${escapeHtml(item.title)}</div>
-        <div class="queue-item-sub">
-          <span>${escapeHtml(item.subtitle)}</span>
-          <strong>${escapeHtml(item.amount)}</strong>
-        </div>
-      </div>
-    `;
-  }).join("");
-
-  renderDetail();
   if ($("queueCount")) $("queueCount").textContent = items.length;
   if ($("navQueueBadge")) $("navQueueBadge").textContent = items.length;
   if ($("statTodayPending")) $("statTodayPending").textContent = items.length;
   if ($("todayQueueCount")) $("todayQueueCount").textContent = items.length;
+
+  if (items.length === 0) {
+    q.innerHTML = '<div class="loading">İncelenecek bekleyen belge bulunmuyor. Sağ üstten "Belge Yükle" ile e-Fatura (XML), PDF veya fiş görseli ekleyebilirsiniz.</div>';
+    renderDetail();
+    return;
+  }
+  if (selected >= items.length) selected = items.length - 1;
+
+  q.innerHTML = items.map((item, idx) => `
+      <div class="queue-item ${idx === selected ? "active" : ""}" data-action="select-item" data-index="${idx}">
+        <div class="queue-item-top">
+          <span class="tag-doc">${escapeHtml(item.type)}</span>
+          <span class="badge-conf ${item.level}">${escapeHtml(item.status)}</span>
+        </div>
+        <div class="queue-item-title">${escapeHtml(item.title)}</div>
+        <div class="queue-item-sub">
+          <span>${escapeHtml(item.docNo)} · ${escapeHtml(item.date)}</span>
+          <strong>${escapeHtml(item.amount)}</strong>
+        </div>
+      </div>`).join("");
+  renderDetail();
 }
 
 function selectItem(idx) {
   selected = idx;
+  if ($("editForm")) $("editForm").hidden = true;
   renderQueue();
 }
 
 function renderDetail() {
   const item = items[selected];
+  const actions = $("approveButton") ? $("approveButton").parentElement : null;
   if (!item) {
-    $("detail").innerHTML = '<div class="loading">Görüntülenecek belge seçilmedi.</div>';
+    $("detailType").textContent = "-";
+    $("detailTitle").textContent = "Belge seçilmedi";
+    $("detailConfidence").textContent = "";
+    $("detailMeta").innerHTML = "";
+    $("journal").innerHTML = '<div class="loading">Önerilen kayıt yok.</div>';
+    $("detailReason").textContent = "";
+    if (actions) actions.hidden = true;
     return;
   }
+  if (actions) actions.hidden = false;
 
   $("detailType").textContent = item.type;
   $("detailTitle").textContent = item.title;
-  $("detailConfidence").textContent = `● %${item.confidence} · ${item.confidence >= 80 ? 'Yüksek' : 'İnceleme Gerekli'}`;
+  $("detailConfidence").textContent = item.confidence
+    ? `● %${item.confidence} · ${item.status}` : `● ${item.status}`;
 
   $("detailMeta").innerHTML = `
-    <div class="meta-field"><span>Mükellef</span><strong>${escapeHtml(item.subtitle)}</strong></div>
     <div class="meta-field"><span>Karşı Taraf</span><strong>${escapeHtml(item.title)}</strong></div>
-    <div class="meta-field"><span>Tarih</span><strong>${escapeHtml(item.date || '03.11.2026')}</strong></div>
-    <div class="meta-field"><span>Belge No</span><strong>${escapeHtml(item.docNo || 'YYS2026000041812')}</strong></div>
-    <div class="meta-field"><span>Açıklama</span><strong>${escapeHtml(item.desc || 'Ticari Mal Alımı')}</strong></div>
-    <div class="meta-field"><span>Tutar / KDV</span><strong>${escapeHtml(item.amount)} (KDV: ${escapeHtml(item.kdv || '0 ₺')})</strong></div>
+    <div class="meta-field"><span>VKN / TCKN</span><strong>${escapeHtml(item.vkn || "-")}</strong></div>
+    <div class="meta-field"><span>Tarih</span><strong>${escapeHtml(item.date)}</strong></div>
+    <div class="meta-field"><span>Belge No</span><strong>${escapeHtml(item.docNo)}</strong></div>
+    <div class="meta-field"><span>Matrah / KDV</span><strong>${escapeHtml(item.base)} / ${escapeHtml(item.kdv)}</strong></div>
+    <div class="meta-field"><span>Toplam</span><strong>${escapeHtml(item.amount)}</strong></div>
   `;
 
-  let totalDebit = 0;
-  let totalCredit = 0;
-
-  const rowsHtml = item.rows.map(r => {
-    const dVal = parseFloat(r[1].replace(/\./g, "").replace(",", ".")) || 0;
-    const cVal = parseFloat(r[2].replace(/\./g, "").replace(",", ".")) || 0;
-    totalDebit += dVal;
-    totalCredit += cVal;
-
-    return `
-      <div class="journal-row">
-        <span>${escapeHtml(r[0])}</span>
-        <span class="num">${r[1] ? r[1] + ' ₺' : '-'}</span>
-        <span class="num">${r[2] ? r[2] + ' ₺' : '-'}</span>
-      </div>
-    `;
-  }).join("");
-
-  const totalFormattedDebit = totalDebit.toLocaleString("tr-TR", { minimumFractionDigits: 2 }) + " ₺";
-  const totalFormattedCredit = totalCredit.toLocaleString("tr-TR", { minimumFractionDigits: 2 }) + " ₺";
-
-  $("journal").innerHTML = rowsHtml + `
-    <div class="journal-row total-row">
-      <span>TOPLAM (BORÇ / ALACAK DENGELİ)</span>
-      <span class="num">${totalFormattedDebit}</span>
-      <span class="num">${totalFormattedCredit}</span>
-    </div>
-  `;
-
+  const lines = item.entry ? item.entry.lines : [];
+  if (!lines.length) {
+    $("journal").innerHTML = '<div class="loading">Bu belge için otomatik kayıt oluşturulamadı. Gerekçe aşağıda.</div>';
+  } else {
+    let debit = 0, credit = 0;
+    const rows = lines.map(l => {
+      debit += Number(l.debit); credit += Number(l.credit);
+      return `<div class="journal-row">
+          <span>${escapeHtml(l.account_code)} ${escapeHtml(l.account_name)}</span>
+          <span class="num">${Number(l.debit) ? escapeHtml(formatTL(l.debit)) : "-"}</span>
+          <span class="num">${Number(l.credit) ? escapeHtml(formatTL(l.credit)) : "-"}</span>
+        </div>`;
+    }).join("");
+    $("journal").innerHTML = rows + `
+      <div class="journal-row total-row">
+        <span>TOPLAM ${Math.abs(debit - credit) < 0.005 ? "(DENGELİ)" : "(DENGESİZ!)"}</span>
+        <span class="num">${escapeHtml(formatTL(debit))}</span>
+        <span class="num">${escapeHtml(formatTL(credit))}</span>
+      </div>`;
+  }
   $("detailReason").textContent = item.reason;
+
+  const hasDraft = item.entry && item.entry.status === "draft";
+  if ($("approveButton")) {
+    $("approveButton").disabled = !hasDraft || !CAN_APPROVE();
+    $("approveButton").title = !CAN_APPROVE() ? "Onay yalnızca müşavir veya yönetici tarafından yapılabilir."
+      : (!hasDraft ? "Onaylanacak taslak yok; önce hesabı düzeltin." : "Taslak fişi yevmiyeye işle");
+  }
+  if ($("editButton")) $("editButton").disabled = !item.canCorrect || !CAN_WRITE();
+  if ($("laterButton")) $("laterButton").disabled = !CAN_WRITE();
+  if (item.entry && item.entry.lines.length && $("accountCodeInput")) {
+    const main = item.entry.lines[item.type === "SATIŞ FATURASI" ? 1 : 0];
+    $("accountCodeInput").value = main.account_code;
+    $("accountNameInput").value = main.account_name;
+  }
 }
 
-// 6. Dosya Yükleme & Polling (test_health.py gereksinimleri)
+// 6. Dosya Yükleme & Kuyruk Yenileme
 function uploadSelectedFile(file) {
   if (!file) return;
   if (file.size > 25*1024*1024) {
     showToast("Dosya 25 MB sınırını aşıyor.");
     return;
   }
-  showToast("Belge yüklendi, İşleniyor...");
-
+  showToast("Belge yükleniyor, İşleniyor...");
   const formData = new FormData();
   formData.append("upload", file);
 
-  fetch("/documents/upload", {
-    method: "POST",
-    headers: tenantHeaders(),
-    body: formData
-  })
-  .then(r => { if (!r.ok) throw new Error("upload"); return r.json(); })
-  .then(doc => fetch(`/documents/${doc.id}/extract`, { method: "POST", headers: tenantHeaders() }))
-  .then(() => {
-    showToast("✓ Belge kuyruğa eklendi!");
-    loadRealDocuments();
-  })
-  .catch(() => {
-    // Demo fallback item
-    items.unshift({
-      type: "E-FATURA",
-      title: file.name,
-      subtitle: "Yüklenen Belge",
-      amount: "1.000,00 ₺",
-      confidence: 85,
-      level: "high",
-      date: "04.11.2026",
-      reason: "Dosya içerisinden çıkarılan kalemler TDHP hesap planı ile eşleştirildi.",
-      rows: [["153.01.001 TİCARİ MAL", "833,33", ""], ["191.01.020 İNDİRİLECEK KDV", "166,67", ""], ["320.01.001 SATICILAR", "", "1.000,00"]]
+  fetch("/documents/upload", { method: "POST", headers: tenantHeaders(), body: formData })
+    .then(async r => {
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        const detail = typeof data.detail === "string" ? data.detail : (data.detail && data.detail.message) || "Yükleme başarısız.";
+        throw new Error(detail);
+      }
+      return data;
+    })
+    .then(doc => fetch(`/documents/${doc.id}/extract`, { method: "POST", headers: tenantHeaders() }))
+    .then(() => {
+      showToast("✓ Belge okundu ve kuyruğa eklendi.");
+      selected = 0;
+      loadRealDocuments();
+    })
+    .catch(err => {
+      showToast("Yükleme hatası: " + err.message);
+      loadRealDocuments();
     });
-    selected = 0;
-    renderQueue();
-  });
+}
+
+async function uploadFiles(fileList) {
+  for (const file of Array.from(fileList)) {
+    await new Promise(resolve => { uploadSelectedFile(file); setTimeout(resolve, 400); });
+  }
 }
 
 function loadRealDocuments() {
-  if (loadingRealDocuments) return;
+  if (loadingRealDocuments || !authToken || !selectedMukellefId) return;
   loadingRealDocuments = true;
-  fetch("/documents", { headers: getAuthHeaders() })
-    .then(r => r.ok ? r.json() : [])
+  const currentId = items[selected] ? items[selected].id : null;
+  fetch("/documents/queue", { headers: getAuthHeaders() })
+    .then(r => r.ok ? r.json() : { items: [] })
     .then(data => {
       loadingRealDocuments = false;
-      if (Array.isArray(data) && data.length > 0) {
-        realMode = true;
-      }
+      items = (data.items || []).map(toViewItem);
+      const keep = items.findIndex(i => i.id === currentId);
+      selected = keep >= 0 ? keep : Math.min(selected, Math.max(0, items.length - 1));
+      realMode = true;
+      renderQueue();
     })
     .catch(() => { loadingRealDocuments = false; });
 }
 
 function startDocumentPolling() {
   if (pollTimer) clearInterval(pollTimer);
+  loadRealDocuments();
   pollTimer = setInterval(loadRealDocuments,5000);
 }
 
-// 7. Onay / Düzelt / Sonra Aksiyonları
+async function documentAction(path, body) {
+  const item = items[selected];
+  if (!item) return null;
+  const res = await fetch(`/documents/${item.id}/${path}`, {
+    method: "POST",
+    headers: getAuthHeaders(),
+    body: body ? JSON.stringify(body) : undefined
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    showToast("İşlem yapılamadı: " + (typeof data.detail === "string" ? data.detail : "hata"));
+    return null;
+  }
+  return data;
+}
+
+// 7. Onay / Düzelt / Sonra Aksiyonları (gerçek API)
 function setupDocumentActions() {
   if ($("approveButton")) {
-    $("approveButton").addEventListener("click", () => {
-      showToast("✓ Fiş onaylandı ve yevmiyeye aktarıldı.");
-      items.splice(selected, 1);
-      if (selected >= items.length) selected = Math.max(0, items.length - 1);
-      renderQueue();
+    $("approveButton").addEventListener("click", async () => {
+      const done = await documentAction("approve");
+      if (done) { showToast("✓ Fiş yevmiyeye işlendi."); loadRealDocuments(); }
     });
   }
   if ($("laterButton")) {
-    $("laterButton").addEventListener("click", () => {
-      showToast("⏱ Belge sonraya ertelendi.");
-      selected = (selected + 1) % items.length;
-      renderQueue();
+    $("laterButton").addEventListener("click", async () => {
+      const done = await documentAction("later");
+      if (done) {
+        showToast("⏱ Belge incelemeye bırakıldı.");
+        selected = (selected + 1) % Math.max(1, items.length);
+        loadRealDocuments();
+      }
     });
   }
   if ($("editButton")) {
@@ -698,15 +654,27 @@ function setupDocumentActions() {
     });
   }
   if ($("saveEditButton")) {
-    $("saveEditButton").addEventListener("click", () => {
-      $("editForm").hidden = true;
-      showToast("✓ Düzeltme kural motoruna kaydedildi.");
+    $("saveEditButton").addEventListener("click", async () => {
+      const account_code = $("accountCodeInput").value.trim();
+      const account_name = $("accountNameInput").value.trim();
+      const note = $("noteInput").value.trim() || null;
+      if (!/^[1-9][0-9]{2}(\.[0-9A-Za-z]{1,20}){0,3}$/.test(account_code) || account_name.length < 2) {
+        showToast("Geçerli bir TDHP hesap kodu (ör. 770.01) ve hesap adı girin.");
+        return;
+      }
+      const done = await documentAction("correct", { account_code, account_name, note });
+      if (done) {
+        $("editForm").hidden = true;
+        showToast("✓ Taslak yeni hesapla güncellendi.");
+        loadRealDocuments();
+      }
     });
   }
   if ($("uploadInput")) {
     $("uploadInput").addEventListener("change", e => {
-      if (e.target.files && e.target.files[0]) {
-        uploadSelectedFile(e.target.files[0]);
+      if (e.target.files && e.target.files.length) {
+        uploadFiles(e.target.files);
+        e.target.value = "";
       }
     });
   }

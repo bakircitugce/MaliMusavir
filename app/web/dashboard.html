@@ -202,11 +202,11 @@
           <div class="page-heading">
             <div>
               <h1 class="main-title">Onay kuyruğu</h1>
-              <p class="muted"><span id="queueCount">8</span> belge bekliyor</p>
+              <p class="muted"><span id="queueCount">0</span> belge bekliyor</p>
             </div>
             <div class="heading-actions">
               <label class="upload-button" id="uploadButton" for="uploadInput">＋ Belge Yükle</label>
-              <input id="uploadInput" type="file" accept=".xml,.pdf,.jpg,.jpeg,.png,.xlsx,.xls,.csv" hidden>
+              <input id="uploadInput" type="file" accept=".xml,.pdf,.jpg,.jpeg,.png,.xlsx,.xls,.csv" multiple hidden>
               <button class="outline-button" id="helpButton">? Nasıl Çalışır?</button>
             </div>
           </div>
@@ -221,10 +221,10 @@
             <section class="detail-card" id="detail" aria-live="polite">
               <div class="detail-header-row">
                 <div>
-                  <span class="tag-sm" id="detailType">E-FATURA</span>
-                  <h2 id="detailTitle">Yıldız Yem San. A.Ş.</h2>
+                  <span class="tag-sm" id="detailType">-</span>
+                  <h2 id="detailTitle">Belge seçilmedi</h2>
                 </div>
-                <span class="confidence-pill" id="detailConfidence">● %94 · Yüksek</span>
+                <span class="confidence-pill" id="detailConfidence"></span>
               </div>
 
               <!-- Meta Bilgi Tablosu -->
@@ -255,15 +255,10 @@
               </div>
 
               <div class="edit-form" id="editForm" hidden>
-                <label for="categoryInput">Doğru Belge Kategorisi</label>
-                <select id="categoryInput">
-                  <option value="invoice">Fatura</option>
-                  <option value="z_report">Z Raporu</option>
-                  <option value="bank_statement">Banka Ekstresi</option>
-                  <option value="expense_slip">Gider Pusulası</option>
-                  <option value="smm">Serbest Meslek Makbuzu</option>
-                  <option value="unknown">Bilinmiyor</option>
-                </select>
+                <label for="accountCodeInput">TDHP hesap kodu (gider/stok veya gelir satırı)</label>
+                <input id="accountCodeInput" class="form-input" placeholder="ör. 770.01, 153, 740, 600" maxlength="40">
+                <label for="accountNameInput">Hesap adı</label>
+                <input id="accountNameInput" class="form-input" placeholder="ör. Genel Yönetim Giderleri" maxlength="200">
                 <label for="noteInput">Düzeltme Notu</label>
                 <textarea id="noteInput" rows="2" placeholder="Düzeltme gerekçesi..."></textarea>
                 <button class="btn-approve" id="saveEditButton">✓ Düzeltmeyi Kaydet</button>

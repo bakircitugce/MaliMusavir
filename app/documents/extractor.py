@@ -9,7 +9,7 @@ from app.core.config import get_settings
 from app.core.models import Belge
 from app.documents.classifier import classify_document
 from app.documents.expense_slip import expense_slip_metadata, parse_expense_slip
-from app.documents.ocr import OCRDependencyError, extract_image_text
+from app.documents.ocr import OCRExtractionError, extract_image_text
 from app.documents.pdf import PDFExtractionError, extract_pdf_text
 from app.documents.smm import parse_smm, smm_metadata
 from app.documents.spreadsheet import SpreadsheetReadError, read_spreadsheet
@@ -110,7 +110,7 @@ async def extract_document(
     except (
         DocumentExtractionError,
         FileNotFoundError,
-        OCRDependencyError,
+        OCRExtractionError,  # OCRDependencyError dahil (alt sınıfı)
         PDFExtractionError,
         SpreadsheetReadError,
         UBLParseError,

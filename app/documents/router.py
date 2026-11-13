@@ -11,17 +11,18 @@ from fastapi import (
     UploadFile,
     status,
 )
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import audit
-from app.auth.deps import get_current_user
+from app.auth.deps import get_current_user, require_approver
 from app.auth.deps import tenant_context as tenant_headers
 from app.core.db import get_session
-from app.core.models import Belge, Mukellef, User
+from app.core.models import Belge, JournalLine, Mukellef, User
 from app.core.safety import content_disposition
 from app.documents.extractor import DocumentExtractionError, extract_document
-from app.documents.queue import enqueue_extraction
+from app.documents.queue import enqueue_extraction, process_after_extraction
 from app.documents.review import DocumentReviewInput, apply_document_review
 from app.documents.service import (
     CANONICAL_MEDIA_TYPES,
@@ -31,6 +32,15 @@ from app.documents.service import (
     receive_document,
 )
 from app.documents.storage import LocalStorage
+from app.learning.service import record_feedback
+from app.ledger.draft import LedgerValidationError
+from app.ledger.posting import (
+    PURCHASE_FEATURE,
+    SALES_FEATURE,
+    existing_entry,
+    post_document,
+)
+from app.ledger.service import approve_entry
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 storage = LocalStorage()
@@ -192,6 +202,192 @@ async def list_documents(
     return {"documents": [serialize_document(document) for document in documents]}
 
 
+class CorrectionInput(BaseModel):
+    account_code: str = Field(pattern=r"^[1-9][0-9]{2}(\.[0-9A-Za-z]{1,20}){0,3}$")
+    account_name: str = Field(min_length=2, max_length=200)
+    note: str | None = Field(default=None, max_length=2000)
+
+
+def _invoice_summary(meta: dict) -> dict | None:
+    invoice = meta.get("invoice")
+    if not invoice:
+        return None
+    return {
+        "invoice_id": invoice.get("invoice_id"),
+        "issue_date": invoice.get("issue_date"),
+        "invoice_type_code": invoice.get("invoice_type_code"),
+        "supplier": invoice.get("supplier"),
+        "customer": invoice.get("customer"),
+        "tax_exclusive_amount": invoice.get("tax_exclusive_amount"),
+        "tax_total": invoice.get("tax_total"),
+        "payable_amount": invoice.get("payable_amount"),
+    }
+
+
+async def _queue_item(session: AsyncSession, document: Belge) -> dict[str, object]:
+    meta = document.extraction_metadata or {}
+    entry = await existing_entry(session, document)
+    lines: list[dict[str, object]] = []
+    if entry is not None:
+        rows = await session.scalars(
+            select(JournalLine)
+            .where(JournalLine.journal_entry_id == entry.id, JournalLine.buro_id == document.buro_id)
+            .order_by(JournalLine.line_order)
+        )
+        lines = [
+            {"account_code": r.account_code, "account_name": r.account_name,
+             "debit": str(r.debit), "credit": str(r.credit)}
+            for r in rows.all()
+        ]
+    return {
+        **serialize_document(document),
+        "created_at": document.created_at.isoformat() if document.created_at else None,
+        "invoice": _invoice_summary(meta),
+        "posting": meta.get("posting"),
+        "extraction_error": meta.get("error"),
+        "entry": (
+            {"id": str(entry.id), "status": entry.status, "description": entry.description,
+             "entry_date": entry.entry_date.isoformat(),
+             "confidence": str(entry.confidence) if entry.confidence is not None else None,
+             "lines": lines}
+            if entry is not None else None
+        ),
+    }
+
+
+@router.get("/queue")
+async def review_queue(
+    tenant: tuple[UUID, UUID] = Depends(tenant_headers),
+    session: AsyncSession = Depends(get_session),
+    include_approved: bool = Query(default=False),
+    limit: int = Query(default=100, ge=1, le=200),
+) -> dict[str, object]:
+    """İnceleme kuyruğu: belge + çıkarılan bilgiler + taslak yevmiye satırları + gerekçe."""
+    buro_id, mukellef_id = tenant
+    stmt = select(Belge).where(Belge.buro_id == buro_id, Belge.mukellef_id == mukellef_id)
+    if not include_approved:
+        stmt = stmt.where(Belge.review_status != "approved")
+    documents = (await session.scalars(stmt.order_by(Belge.created_at.desc()).limit(limit))).all()
+    items = [await _queue_item(session, d) for d in documents]
+    return {"items": items, "count": len(items)}
+
+
+async def _tenant_document(
+    session: AsyncSession, document_id: UUID, buro_id: UUID, mukellef_id: UUID
+) -> Belge:
+    document = await session.scalar(
+        select(Belge).where(
+            Belge.id == document_id, Belge.buro_id == buro_id, Belge.mukellef_id == mukellef_id
+        )
+    )
+    if document is None:
+        raise HTTPException(status_code=404, detail="Belge bulunamadı.")
+    return document
+
+
+async def _learn(session: AsyncSession, document: Belge, account_label: str) -> None:
+    posting = (document.extraction_metadata or {}).get("posting") or {}
+    invoice = (document.extraction_metadata or {}).get("invoice") or {}
+    direction = posting.get("direction")
+    party = invoice.get("supplier" if direction == "purchase" else "customer") or {}
+    vkn = "".join(ch for ch in (party.get("tax_id") or "") if ch.isdigit())
+    if direction not in ("purchase", "sales") or not vkn:
+        return
+    await record_feedback(
+        session, buro_id=document.buro_id, mukellef_id=document.mukellef_id,
+        feature_type=PURCHASE_FEATURE if direction == "purchase" else SALES_FEATURE,
+        feature_value=vkn, label=account_label, accepted=True,
+    )
+
+
+@router.post("/{document_id}/approve", dependencies=[Depends(require_approver)])
+async def approve_document(
+    document_id: UUID,
+    request: Request,
+    tenant: tuple[UUID, UUID] = Depends(tenant_headers),
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> dict[str, object]:
+    """Taslak fişi kesinleştirir (yalnızca müşavir/admin). Dönem kilidi ve denge kontrol edilir."""
+    buro_id, mukellef_id = tenant
+    document = await _tenant_document(session, document_id, buro_id, mukellef_id)
+    entry = await existing_entry(session, document)
+    if entry is None or entry.status != "draft":
+        raise HTTPException(
+            status_code=409,
+            detail="Onaylanacak taslak fiş yok. Önce hesabı düzeltip taslak oluşturun.",
+        )
+    try:
+        await approve_entry(session, buro_id=buro_id, mukellef_id=mukellef_id, entry_id=entry.id)
+    except LedgerValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    document.review_status = "approved"
+    document.classification_status = "classified"
+    account = ((document.extraction_metadata or {}).get("posting") or {}).get("account")
+    if account:
+        await _learn(session, document, account)
+    await audit.record(
+        session, "document.approve", request=request, user=user, mukellef_id=mukellef_id,
+        target_type="journal_entry", target_id=entry.id,
+        details={"document_id": str(document.id)}, commit=False,
+    )
+    await session.commit()
+    return await _queue_item(session, document)
+
+
+@router.post("/{document_id}/correct")
+async def correct_document(
+    document_id: UUID,
+    correction: CorrectionInput,
+    request: Request,
+    tenant: tuple[UUID, UUID] = Depends(tenant_headers),
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> dict[str, object]:
+    """Ana hesabı (gider/stok veya gelir) değiştirir, taslağı yeniden üretir ve öğrenir."""
+    buro_id, mukellef_id = tenant
+    document = await _tenant_document(session, document_id, buro_id, mukellef_id)
+    if document.review_status == "approved":
+        raise HTTPException(status_code=409, detail="Onaylanmış belge düzeltilemez; ters kayıt kullanın.")
+    if "invoice" not in (document.extraction_metadata or {}):
+        raise HTTPException(status_code=422, detail="Bu belge türünde hesap düzeltme desteklenmiyor.")
+    override = (correction.account_code, correction.account_name.strip())
+    result = await post_document(session, document, account_override=override)
+    if result.entry_id is None:
+        raise HTTPException(status_code=422, detail=" ".join(result.reasons))
+    document.review_note = correction.note
+    await _learn(session, document, f"{override[0]}|{override[1]}"[:100])
+    await audit.record(
+        session, "document.correct", request=request, user=user, mukellef_id=mukellef_id,
+        target_type="document", target_id=document.id,
+        details={"account_code": override[0], "account_name": override[1]}, commit=False,
+    )
+    await session.commit()
+    return await _queue_item(session, document)
+
+
+@router.post("/{document_id}/later")
+async def defer_document(
+    document_id: UUID,
+    request: Request,
+    tenant: tuple[UUID, UUID] = Depends(tenant_headers),
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> dict[str, object]:
+    """"Sonra": belgeyi onaylamadan incelemeye bırakır."""
+    buro_id, mukellef_id = tenant
+    document = await _tenant_document(session, document_id, buro_id, mukellef_id)
+    if document.review_status == "approved":
+        raise HTTPException(status_code=409, detail="Belge zaten onaylanmış.")
+    document.review_status = "needs_review"
+    await audit.record(
+        session, "document.defer", request=request, user=user, mukellef_id=mukellef_id,
+        target_type="document", target_id=document.id, commit=False,
+    )
+    await session.commit()
+    return await _queue_item(session, document)
+
+
 @router.get("/{document_id}")
 async def get_document(
     document_id: UUID,
@@ -273,7 +469,10 @@ async def extract_document_endpoint(
     try:
         document = await extract_document(session, storage, document)
     except DocumentExtractionError as exc:
+        await process_after_extraction(session, document)
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    await process_after_extraction(session, document)
+    await session.refresh(document)
     return serialize_document_detail(document)
 
 

@@ -30,6 +30,7 @@ APPROVER_ONLY = {
     ("POST", "/ledger/entries/{entry_id}/reverse"),
     ("POST", "/erp/exports/{export_id}/retry"),
     ("POST", "/einvoice/submit"),
+    ("POST", "/documents/{document_id}/approve"),
 }
 
 

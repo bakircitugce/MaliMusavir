@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.4.0 — Faz 2: Gerçek belge işleme ve TDHP taslak yevmiye (1. kısım)
+
+- e-Fatura: VKN/TCKN artık GİB standardındaki `PartyIdentification/ID[@schemeID]`
+  alanından okunuyor (TAKAY örneğinde 192/192); bireysel alıcılarda `Person` adı birleştiriliyor.
+- Belge → TDHP taslak yevmiye bağlantısı (`app/ledger/posting.py`): okuma biter bitmez
+  alış (153/191/320.<VKN>), satış (120.<VKN>/600/391) ve Z raporu (100/108/600/391)
+  taslakları oluşturuluyor. Fatura yönü mükellef VKN'sinden belirleniyor. Mükellefe ait
+  olmayan, dengesiz (ÖTV vb.), iade/tevkifat ve döviz faturaları gerekçesiyle incelemeye düşüyor.
+- Güven skoru: öğrenilmiş hesap yoksa alış faturası varsayılan 153 ile `needs_review`;
+  aynı satıcı için tekrarlanan onaylardan sonra öğrenilen hesap otomatik öneriliyor.
+- Yeni uçlar: `GET /documents/queue`, `POST /documents/{id}/approve` (yalnızca
+  müşavir/admin, dönem kilidi + denge kontrolü + denetim kaydı), `POST /documents/{id}/correct`
+  (TDHP hesap düzeltme + öğrenme), `POST /documents/{id}/later`.
+- Panel: örnek kartlar ve sahte "onaylandı/kaydedildi" bildirimleri kaldırıldı; kuyruk
+  gerçek belgeleri, taslak yevmiye satırlarını ve gerekçeyi gösteriyor; butonlar gerçek
+  API'ye bağlı; çoklu dosya yükleme.
+- Düzeltildi: bozuk/okunamayan görsel işlenirken `OCRExtractionError` yakalanmıyor,
+  belge "işleniyor" durumunda takılı kalıyordu.
+
 ## 0.3.0 — Faz 1: Güvenlik sağlamlaştırma (1. kısım)
 
 - Güvenlik başlıkları middleware'i: CSP (`script-src 'self'`), `X-Frame-Options`, `nosniff`,

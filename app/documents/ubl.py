@@ -65,13 +65,29 @@ def _party(invoice: ElementTree.Element, party_name: str) -> PartyData:
     name = _text(_first(party, "PartyName", "Name")) or _text(
         _first(party, "PartyLegalEntity", "RegistrationName")
     )
-    tax_scheme = _first(party, "PartyTaxScheme")
-    tax_id = _text(_first(tax_scheme, "CompanyID")) if tax_scheme is not None else None
-    tax_id_scheme = (
-        _first(tax_scheme, "CompanyID").attrib.get("schemeID")
-        if tax_scheme is not None and _first(tax_scheme, "CompanyID") is not None
-        else None
-    )
+    if not name:
+        # e-Arşiv / bireysel alıcı: kurum unvanı yoksa kişi adı birleştirilir.
+        person = _first(party, "Person")
+        if person is not None:
+            parts = [_text(_first(person, p)) for p in ("FirstName", "MiddleName", "FamilyName")]
+            name = " ".join(p for p in parts if p) or None
+
+    # GİB UBL-TR: VKN/TCKN, PartyIdentification/ID[@schemeID="VKN"|"TCKN"] içindedir.
+    tax_id = tax_id_scheme = None
+    for identification in _children(party, "PartyIdentification"):
+        id_element = _first(identification, "ID")
+        if id_element is None:
+            continue
+        scheme = (id_element.attrib.get("schemeID") or "").upper()
+        if scheme in {"VKN", "TCKN"} and _text(id_element):
+            tax_id, tax_id_scheme = _text(id_element), scheme
+            break
+    if tax_id is None:
+        # Bazı üreticiler numarayı PartyTaxScheme/CompanyID içine yazar.
+        company_id = _first(party, "PartyTaxScheme", "CompanyID")
+        if _text(company_id):
+            tax_id = _text(company_id)
+            tax_id_scheme = company_id.attrib.get("schemeID")
     return PartyData(name=name, tax_id=tax_id, tax_id_scheme=tax_id_scheme)
 
 
