@@ -239,6 +239,25 @@ async def persist_reversal(
         raise LedgerValidationError("Yevmiye fişi bulunamadı.")
     if entry.status != "approved":
         raise LedgerValidationError("Yalnızca onaylanmış fiş terslenebilir.")
+    if (entry.rule_name or "").endswith("reversal") or entry.description.startswith("Ters kayıt: "):
+        raise LedgerValidationError("Ters kayıt fişi tekrar terslenemez.")
+    # Aynı fişin iki kez terslenmesini engelle (çift ters kayıt mizanı bozar).
+    duplicate = await session.scalar(
+        select(JournalEntry.id).where(
+            JournalEntry.buro_id == buro_id,
+            JournalEntry.mukellef_id == mukellef_id,
+            JournalEntry.description == f"Ters kayıt: {entry.description}",
+            JournalEntry.entry_date == entry.entry_date,
+            (
+                JournalEntry.source_document_id.is_(None)
+                if entry.source_document_id is None
+                else JournalEntry.source_document_id == entry.source_document_id
+            ),
+            JournalEntry.status.in_(("draft", "pending_review", "approved")),
+        )
+    )
+    if duplicate is not None:
+        raise LedgerValidationError("Bu fiş için zaten ters kayıt oluşturulmuş.")
 
     lines_result = await session.execute(
         select(JournalLine).where(

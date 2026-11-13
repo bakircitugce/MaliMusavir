@@ -697,22 +697,105 @@ function loadBankData() {
 }
 
 function loadLedgerData() {
+  loadTrialBalance();
+  loadJournalEntries();
+}
+
+function loadTrialBalance() {
   fetch("/ledger/trial-balance", { headers: getAuthHeaders() })
-    .then(r => r.ok ? r.json() : {})
+    .then(r => r.ok ? r.json() : null)
     .then(tb => {
       const tbody = $("trialBalanceBody");
-      if (tbody && Array.isArray(tb.rows)) {
-        tbody.innerHTML = tb.rows.map(r => `
+      if (!tbody) return;
+      const rows = (tb && tb.trial_balance) || [];
+      if (!rows.length) {
+        tbody.innerHTML = '<tr><td colspan="5" class="muted" style="text-align:center;padding:24px;">Henüz onaylanmış yevmiye fişi yok. Onay kuyruğundan bir belgeyi onayladığınızda mizan burada oluşur.</td></tr>';
+        if ($("trialBalanceFoot")) $("trialBalanceFoot").innerHTML = "";
+        if ($("mizanBalanceStatus")) $("mizanBalanceStatus").textContent = "Kayıt yok";
+        return;
+      }
+      tbody.innerHTML = rows.map(r => `
           <tr>
-            <td><code>${escapeHtml(r.hesap_kodu)}</code></td>
-            <td>${escapeHtml(r.hesap_adi)}</td>
-            <td class="num">${r.borc_toplam.toLocaleString("tr-TR", {minimumFractionDigits:2})} ₺</td>
-            <td class="num">${r.alacak_toplam.toLocaleString("tr-TR", {minimumFractionDigits:2})} ₺</td>
-            <td class="num"><strong>${r.bakiye.toLocaleString("tr-TR", {minimumFractionDigits:2})} ₺</strong></td>
-          </tr>
-        `).join("");
+            <td><code>${escapeHtml(r.account_code)}</code></td>
+            <td>${escapeHtml(r.account_name)}</td>
+            <td class="num">${escapeHtml(formatTL(r.total_debit))}</td>
+            <td class="num">${escapeHtml(formatTL(r.total_credit))}</td>
+            <td class="num"><strong>${escapeHtml(formatTL(r.balance))}</strong></td>
+          </tr>`).join("");
+      if ($("trialBalanceFoot")) {
+        $("trialBalanceFoot").innerHTML = `
+          <tr><th colspan="2">GENEL TOPLAM</th>
+            <th class="num">${escapeHtml(formatTL(tb.grand_total_debit))}</th>
+            <th class="num">${escapeHtml(formatTL(tb.grand_total_credit))}</th><th></th></tr>`;
+      }
+      if ($("mizanBalanceStatus")) {
+        $("mizanBalanceStatus").textContent = tb.is_balanced
+          ? "✓ Fişler Dengede (Borç = Alacak)" : "⚠ Mizan dengesiz!";
       }
     }).catch(() => {});
+}
+
+async function loadJournalEntries() {
+  const box = $("journalEntriesList");
+  if (!box) return;
+  try {
+    const res = await fetch("/ledger/entries?status=approved", { headers: getAuthHeaders() });
+    const data = res.ok ? await res.json() : { entries: [] };
+    const entries = (data.entries || []).slice(0, 100);
+    if (!entries.length) {
+      box.innerHTML = '<div class="loading">Henüz onaylanmış yevmiye fişi yok.</div>';
+      return;
+    }
+    const details = await Promise.all(entries.map(e =>
+      fetch(`/ledger/entries/${e.id}`, { headers: getAuthHeaders() }).then(r => r.ok ? r.json() : null)
+    ));
+    box.innerHTML = details.filter(Boolean).map(d => `
+      <div class="card panel-box" style="margin-bottom:12px;">
+        <div class="panel-heading">
+          <h3>${escapeHtml(formatDate(d.entry_date))} · ${escapeHtml(d.description)}</h3>
+          ${CAN_APPROVE() ? `<button class="btn-action-sm" data-action="reverse-entry" data-entry-id="${escapeHtml(d.id)}">↺ Ters Kayıt</button>` : ""}
+        </div>
+        <table class="data-table">
+          <thead><tr><th>Hesap</th><th class="num">Borç</th><th class="num">Alacak</th></tr></thead>
+          <tbody>${d.lines.map(l => `
+            <tr><td><code>${escapeHtml(l.account_code)}</code> ${escapeHtml(l.account_name)}</td>
+              <td class="num">${Number(l.debit) ? escapeHtml(formatTL(l.debit)) : "-"}</td>
+              <td class="num">${Number(l.credit) ? escapeHtml(formatTL(l.credit)) : "-"}</td></tr>`).join("")}
+          </tbody>
+          <tfoot><tr><th>Toplam</th><th class="num">${escapeHtml(formatTL(d.total_debit))}</th>
+            <th class="num">${escapeHtml(formatTL(d.total_credit))}</th></tr></tfoot>
+        </table>
+      </div>`).join("");
+  } catch (_) {
+    box.innerHTML = '<div class="loading">Yevmiye fişleri yüklenemedi.</div>';
+  }
+}
+
+async function reverseEntry(entryId) {
+  if (!window.confirm("Bu fiş için ters kayıt oluşturulsun mu? (Orijinal fiş silinmez, karşı kayıt atılır.)")) return;
+  const res = await fetch(`/ledger/entries/${entryId}/reverse`, { method: "POST", headers: getAuthHeaders() });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    showToast("Ters kayıt yapılamadı: " + (typeof data.detail === "string" ? data.detail : "hata"));
+    return;
+  }
+  showToast("✓ Ters kayıt taslağı oluşturuldu.");
+  loadLedgerData();
+}
+
+function setupLedgerTabs() {
+  const showTab = journal => {
+    if ($("ledgerTrialBalanceView")) $("ledgerTrialBalanceView").hidden = journal;
+    if ($("ledgerEntriesView")) $("ledgerEntriesView").hidden = !journal;
+    if ($("tabBtnTrialBalance")) $("tabBtnTrialBalance").classList.toggle("active", !journal);
+    if ($("tabBtnJournalEntries")) $("tabBtnJournalEntries").classList.toggle("active", journal);
+  };
+  if ($("tabBtnTrialBalance")) $("tabBtnTrialBalance").addEventListener("click", () => showTab(false));
+  if ($("tabBtnJournalEntries")) $("tabBtnJournalEntries").addEventListener("click", () => showTab(true));
+  if ($("btnRefreshLedger")) $("btnRefreshLedger").addEventListener("click", () => {
+    loadLedgerData();
+    showToast("Mizan yenilendi.");
+  });
 }
 
 function loadErpExports() {
@@ -770,6 +853,8 @@ function setupDelegatedActions() {
       openChangePasswordModal(target.dataset.userId, target.dataset.userName);
     } else if (action === "toggle-status") {
       toggleUserStatus(target.dataset.userId, target.dataset.makeActive === "true");
+    } else if (action === "reverse-entry") {
+      reverseEntry(target.dataset.entryId);
     }
   });
   document.querySelectorAll("form[data-no-submit]").forEach(form => {
@@ -793,6 +878,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initAuth();
   setupAuthEventListeners();
   setupDelegatedActions();
+  setupLedgerTabs();
   setupDocumentActions();
   renderQueue();
   startDocumentPolling();

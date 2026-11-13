@@ -278,3 +278,30 @@ async def test_unreadable_document_shows_in_queue_for_manual_entry(
     assert item is not None
     assert item["review_status"] == "needs_review"
     assert "elle giriş" in item["posting"]["reasons"][0]
+
+
+async def test_reversal_is_approved_once_and_nets_trial_balance(
+    api_client: AsyncClient, office
+) -> None:
+    doc_id = await _upload_and_process(
+        api_client, office,
+        ubl(invoice_id="TRS001", supplier_vkn=MUKELLEF_VKN, customer_vkn=CUSTOMER_VKN),
+        "ters.xml",
+    )
+    m_headers = office["musavir"].headers(office["m"])
+    approved = (await api_client.post(f"/documents/{doc_id}/approve", headers=m_headers)).json()
+    entry_id = approved["entry"]["id"]
+
+    first = await api_client.post(f"/ledger/entries/{entry_id}/reverse", headers=m_headers)
+    assert first.status_code == 200, first.text
+    assert first.json()["status"] == "approved"
+
+    tb = (await api_client.get("/ledger/trial-balance", headers=m_headers)).json()
+    assert tb["is_balanced"] is True
+    assert all(row["balance"] in ("0.00", "0") for row in tb["trial_balance"]), tb
+
+    again = await api_client.post(f"/ledger/entries/{entry_id}/reverse", headers=m_headers)
+    assert again.status_code == 400 and "zaten" in again.json()["detail"]
+    reversal_id = first.json()["reversal_entry_id"]
+    nested = await api_client.post(f"/ledger/entries/{reversal_id}/reverse", headers=m_headers)
+    assert nested.status_code == 400

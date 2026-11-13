@@ -15,6 +15,7 @@ from app.ledger.draft import LedgerValidationError
 from app.ledger.service import (
     get_entry_with_lines,
     list_entries,
+    approve_entry,
     persist_reversal,
 )
 from app.ledger.trial_balance import trial_balance
@@ -168,6 +169,10 @@ async def reverse_entry(
             buro_id=buro_id,
             mukellef_id=mukellef_id,
             entry_id=entry_id,
+        )
+        # Ters kayıt yalnızca müşavir/admin tarafından tetiklenir; bu karar onaydır.
+        reversal = await approve_entry(
+            session, buro_id=buro_id, mukellef_id=mukellef_id, entry_id=reversal.id
         )
     except LedgerValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
