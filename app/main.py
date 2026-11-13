@@ -10,6 +10,7 @@ from app.bank.router import router as bank_router
 from app.core.config import get_settings
 from app.core.db import engine
 from app.core.models import Base
+from app.core.security_headers import SecurityHeadersMiddleware
 from app.documents.router import router as documents_router
 from app.einvoice.router import router as einvoice_router
 from app.erp.router import router as erp_router
@@ -35,7 +36,18 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title=settings.app_name, version="0.2.0", lifespan=lifespan)
+IS_PRODUCTION = settings.app_env == "production"
+
+# Production'da API şeması ve etkileşimli dokümantasyon kapatılır.
+app = FastAPI(
+    title=settings.app_name,
+    version="0.3.0",
+    lifespan=lifespan,
+    docs_url=None if IS_PRODUCTION else "/docs",
+    redoc_url=None if IS_PRODUCTION else "/redoc",
+    openapi_url=None if IS_PRODUCTION else "/openapi.json",
+)
+app.add_middleware(SecurityHeadersMiddleware, production=IS_PRODUCTION)
 app.mount(
     "/static",
     StaticFiles(directory=Path(__file__).parent / "web" / "static"),

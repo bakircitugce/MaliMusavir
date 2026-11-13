@@ -28,6 +28,16 @@ class Settings(BaseSettings):
     login_lockout_minutes: int = Field(default=15, ge=1)
     login_rate_limit_per_minute: int = Field(default=10, ge=1)
 
+    # Görsel belge okuma: "tesseract" (varsayılan, hafif) veya "ollama" (yerel görsel
+    # dil modeli; güçlü GPU/bellek ister, yalnızca bilinçli olarak açılmalıdır).
+    vision_backend: str = Field(default="tesseract", pattern="^(ollama|tesseract)$")
+    vision_ollama_url: str = "http://127.0.0.1:11434"
+    vision_model: str = "qwen2.5vl:3b"
+    vision_max_side: int = Field(default=1600, ge=512, le=4096)
+    vision_timeout_seconds: float = Field(default=600, gt=0)
+    # Varsayılan kapalı: mükellef görselleri yerel makine dışına gönderilmez.
+    vision_allow_remote: bool = False
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     @field_validator("auth_secret")

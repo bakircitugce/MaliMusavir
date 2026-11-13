@@ -2,6 +2,9 @@ from decimal import Decimal, InvalidOperation
 from typing import Final
 from xml.etree import ElementTree
 
+from defusedxml import ElementTree as SafeElementTree
+from defusedxml.common import DefusedXmlException
+
 from app.documents.extraction import InvoiceData, InvoiceLineData, PartyData
 
 INVOICE_ROOT: Final = "Invoice"
@@ -98,8 +101,8 @@ def parse_ubl_invoice(content: bytes) -> InvoiceData:
     if b"<!doctype" in content.lower() or b"<!entity" in content.lower():
         raise UBLParseError("DTD veya harici entity içeren XML kabul edilmez.")
     try:
-        root = ElementTree.fromstring(content)
-    except ElementTree.ParseError as exc:
+        root = SafeElementTree.fromstring(content, forbid_dtd=True)
+    except (ElementTree.ParseError, DefusedXmlException) as exc:
         raise UBLParseError("Geçersiz XML belgesi.") from exc
     if _local_name(root.tag) != INVOICE_ROOT:
         raise UBLParseError("XML kökü UBL Invoice olmalıdır.")

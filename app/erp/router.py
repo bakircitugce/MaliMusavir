@@ -1,13 +1,14 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.deps import require_approver
+from app import audit
+from app.auth.deps import get_current_user, require_approver
 from app.auth.deps import tenant_context as tenant_headers
 from app.core.db import get_session
-from app.core.models import Mukellef
+from app.core.models import Mukellef, User
 from app.erp import (
     erp_registry,
     export_approved_entry,
@@ -70,10 +71,12 @@ async def get_exports(
 @router.post("/exports/{export_id}/retry", dependencies=[Depends(require_approver)])
 async def retry_failed_export(
     export_id: UUID,
-    provider: str = Query(min_length=1),
+    request: Request,
+    provider: str = Query(min_length=1, max_length=50),
     max_attempts: int = Query(default=3, ge=1, le=10),
     tenant: tuple[UUID, UUID] = Depends(tenant_headers),
     session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
 ) -> dict[str, object]:
     buro_id, mukellef_id = tenant
     await validate_tenant(session, buro_id, mukellef_id)
@@ -107,11 +110,22 @@ async def retry_failed_export(
             max_attempts=max_attempts,
         )
     except Exception as exc:
+        await audit.record(
+            session, "erp.retry", request=request, user=user, mukellef_id=mukellef_id,
+            target_type="erp_export", target_id=export_id, outcome="failure",
+            details={"provider": provider, "error_type": type(exc).__name__}, commit=False,
+        )
         await session.commit()
+        # İç hata metni istemciye sızdırılmaz; ayrıntı denetim kaydındadır.
         raise HTTPException(
             status_code=502,
-            detail=f"ERP aktarımı yeniden denenemedi: {exc}",
+            detail=f"ERP aktarımı yeniden denenemedi ({type(exc).__name__}).",
         ) from exc
+    await audit.record(
+        session, "erp.retry", request=request, user=user, mukellef_id=mukellef_id,
+        target_type="erp_export", target_id=export_id, details={"provider": provider},
+        commit=False,
+    )
     await session.commit()
     return {
         "ok": True,

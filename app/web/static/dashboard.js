@@ -416,8 +416,8 @@ async function loadUsersList() {
           <td>${roleBadge}</td>
           <td>${statusBadge}</td>
           <td>
-            <button class="btn-action-sm" onclick="openChangePasswordModal('${u.id}', '${escapeHtml(u.ad_soyad)}')">🔑 Şifre Belirle</button>
-            ${!isMe ? `<button class="btn-action-sm" onclick="toggleUserStatus('${u.id}', ${!u.is_active})">${u.is_active ? 'Pasife Al' : 'Aktif Et'}</button>` : ''}
+            <button class="btn-action-sm" data-action="change-password" data-user-id="${escapeHtml(u.id)}" data-user-name="${escapeHtml(u.ad_soyad)}">🔑 Şifre Belirle</button>
+            ${!isMe ? `<button class="btn-action-sm" data-action="toggle-status" data-user-id="${escapeHtml(u.id)}" data-make-active="${!u.is_active}">${u.is_active ? 'Pasife Al' : 'Aktif Et'}</button>` : ''}
           </td>
         </tr>
       `;
@@ -467,16 +467,21 @@ function openChangePasswordModal(userId, userName) {
   $("changePasswordUserId").value = userId;
   $("changePasswordTitle").textContent = `Şifre Belirle: ${userName}`;
   $("newPasswordInput").value = "";
+  // Kendi şifresini değiştiren kullanıcıdan mevcut şifre istenir.
+  const isSelf = currentUser && currentUser.id === userId;
+  $("currentPasswordInput").value = "";
+  $("currentPasswordGroup").hidden = !isSelf;
   $("changePasswordError").hidden = true;
   $("changePasswordModal").hidden = false;
 }
 
 async function submitChangePassword() {
   const userId = $("changePasswordUserId").value;
-  const new_password = $("newPasswordInput").value.trim();
+  const new_password = $("newPasswordInput").value;
+  const current_password = $("currentPasswordInput").value;
 
-  if (!new_password || new_password.length < 4) {
-    $("changePasswordError").textContent = "Şifre en az 4 karakter olmalıdır.";
+  if (!new_password || new_password.length < 12) {
+    $("changePasswordError").textContent = "Şifre en az 12 karakter olmalı; büyük/küçük harf ve rakam içermelidir.";
     $("changePasswordError").hidden = false;
     return;
   }
@@ -485,7 +490,9 @@ async function submitChangePassword() {
     const res = await fetch(`/auth/users/${userId}/password`, {
       method: "POST",
       headers: getAuthHeaders(),
-      body: JSON.stringify({ new_password })
+      body: JSON.stringify(currentUser && currentUser.id === userId
+        ? { new_password, current_password }
+        : { new_password })
     });
     const data = await res.json();
     if (!res.ok) {
@@ -530,7 +537,7 @@ function renderQueue() {
     const confClass = item.confidence >= 80 ? "high" : (item.confidence >= 50 ? "med" : "low");
 
     return `
-      <div class="queue-item ${active}" onclick="selectItem(${idx})">
+      <div class="queue-item ${active}" data-action="select-item" data-index="${idx}">
         <div class="queue-item-top">
           <span class="tag-doc">${escapeHtml(item.type)}</span>
           <span class="badge-conf ${confClass}">%${item.confidence}</span>
@@ -573,7 +580,7 @@ function renderDetail() {
     <div class="meta-field"><span>Tarih</span><strong>${escapeHtml(item.date || '03.11.2026')}</strong></div>
     <div class="meta-field"><span>Belge No</span><strong>${escapeHtml(item.docNo || 'YYS2026000041812')}</strong></div>
     <div class="meta-field"><span>Açıklama</span><strong>${escapeHtml(item.desc || 'Ticari Mal Alımı')}</strong></div>
-    <div class="meta-field"><span>Tutar / KDV</span><strong>${escapeHtml(item.amount)} (KDV: ${item.kdv || '0 ₺'})</strong></div>
+    <div class="meta-field"><span>Tutar / KDV</span><strong>${escapeHtml(item.amount)} (KDV: ${escapeHtml(item.kdv || '0 ₺')})</strong></div>
   `;
 
   let totalDebit = 0;
@@ -748,10 +755,10 @@ function loadErpExports() {
       if (tbody && Array.isArray(exports)) {
         tbody.innerHTML = exports.map(e => `
           <tr>
-            <td><span class="status-badge ${e.status === 'success' ? 'active' : 'inactive'}">${e.status}</span></td>
-            <td><code>${e.journal_entry_id ? e.journal_entry_id.substring(0,8) : '-'}</code></td>
-            <td>${e.external_reference || '-'}</td>
-            <td><small><code>${e.idempotency_key ? e.idempotency_key.substring(0,12) : '-'}</code></small></td>
+            <td><span class="status-badge ${e.status === 'exported' ? 'active' : 'inactive'}">${escapeHtml(e.status)}</span></td>
+            <td><code>${escapeHtml(e.journal_entry_id ? String(e.journal_entry_id).substring(0,8) : '-')}</code></td>
+            <td>${escapeHtml(e.external_reference || '-')}</td>
+            <td><small><code>${escapeHtml(e.idempotency_key ? String(e.idempotency_key).substring(0,12) : '-')}</code></small></td>
             <td>${new Date(e.created_at).toLocaleDateString("tr-TR")}</td>
             <td><button class="btn-action-sm">Detay</button></td>
           </tr>
@@ -768,7 +775,7 @@ function loadTaxData() {
         $("taxParametersList").innerHTML = params.map(p => `
           <div class="table-row">
             <span>${escapeHtml(p.anahtar)}</span>
-            <strong>%${p.deger}</strong>
+            <strong>%${escapeHtml(p.deger)}</strong>
           </div>
         `).join("") || '<div class="muted">Parametre bulunamadı.</div>';
       }
@@ -781,6 +788,25 @@ function showToast(msg) {
   t.textContent = msg;
   t.classList.add("show");
   setTimeout(() => t.classList.remove("show"), 3500);
+}
+
+// Satır içi onclick/onsubmit kullanılmaz (CSP script-src 'self'); tıklamalar burada yakalanır.
+function setupDelegatedActions() {
+  document.addEventListener("click", event => {
+    const target = event.target.closest("[data-action]");
+    if (!target) return;
+    const action = target.dataset.action;
+    if (action === "select-item") {
+      selectItem(Number(target.dataset.index));
+    } else if (action === "change-password") {
+      openChangePasswordModal(target.dataset.userId, target.dataset.userName);
+    } else if (action === "toggle-status") {
+      toggleUserStatus(target.dataset.userId, target.dataset.makeActive === "true");
+    }
+  });
+  document.querySelectorAll("form[data-no-submit]").forEach(form => {
+    form.addEventListener("submit", event => event.preventDefault());
+  });
 }
 
 function escapeHtml(str) {
@@ -798,6 +824,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initNavigation();
   initAuth();
   setupAuthEventListeners();
+  setupDelegatedActions();
   setupDocumentActions();
   renderQueue();
   startDocumentPolling();

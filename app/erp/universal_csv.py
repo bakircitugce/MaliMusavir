@@ -4,6 +4,7 @@ import json
 from datetime import datetime, timezone
 from decimal import Decimal
 
+from app.core.safety import safe_csv_cell, stable_number
 from app.erp.adapter import ERPExportAdapter, ERPExportDocument, ERPExportResult
 
 
@@ -30,12 +31,14 @@ class UniversalCSVERPExportAdapter(ERPExportAdapter):
         for line in lines:
             debit = Decimal(line.get("debit", "0"))
             credit = Decimal(line.get("credit", "0"))
+            # Fatura açıklaması gibi dış kaynaklı metinler Excel'de formül olarak
+            # çalışmasın diye temizlenir.
             writer.writerow([
-                entry_date,
-                slip_no,
-                line.get("account_code", ""),
-                line.get("account_name", ""),
-                description,
+                safe_csv_cell(entry_date),
+                safe_csv_cell(slip_no),
+                safe_csv_cell(line.get("account_code", "")),
+                safe_csv_cell(line.get("account_name", "")),
+                safe_csv_cell(description),
                 f"{debit:.2f}",
                 f"{credit:.2f}",
             ])
@@ -53,7 +56,7 @@ class UniversalCSVERPExportAdapter(ERPExportAdapter):
             )
 
         csv_content = self.build_csv(document.payload)
-        ref_id = abs(hash(document.idempotency_key)) % 1000000
+        ref_id = stable_number(document.idempotency_key, 1_000_000)
         ref = f"CSV-GL-{ref_id:06d}"
 
         result = ERPExportResult(

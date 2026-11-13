@@ -2,14 +2,15 @@ from datetime import date
 from decimal import Decimal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.deps import require_approver
+from app import audit
+from app.auth.deps import get_current_user, require_approver
 from app.auth.deps import tenant_context as tenant_headers
 from app.core.db import get_session
-from app.core.models import Mukellef
+from app.core.models import Mukellef, User
 from app.ledger.draft import LedgerValidationError
 from app.ledger.service import (
     get_entry_with_lines,
@@ -154,8 +155,10 @@ async def get_trial_balance(
 @router.post("/entries/{entry_id}/reverse", dependencies=[Depends(require_approver)])
 async def reverse_entry(
     entry_id: UUID,
+    request: Request,
     tenant: tuple[UUID, UUID] = Depends(tenant_headers),
     session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
 ) -> dict[str, object]:
     buro_id, mukellef_id = tenant
     await validate_tenant(session, buro_id, mukellef_id)
@@ -169,6 +172,11 @@ async def reverse_entry(
     except LedgerValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    await audit.record(
+        session, "ledger.reverse", request=request, user=user, mukellef_id=mukellef_id,
+        target_type="journal_entry", target_id=entry_id,
+        details={"reversal_entry_id": str(reversal.id)}, commit=False,
+    )
     await session.commit()
     return {
         "ok": True,

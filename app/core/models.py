@@ -4,12 +4,12 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
+    JSON,
     BigInteger,
     CheckConstraint,
     Date,
-    ForeignKey,
-    JSON,
     DateTime,
+    ForeignKey,
     Numeric,
     String,
     UniqueConstraint,
@@ -61,6 +61,26 @@ class User(Base, TimestampMixin):
     token_version: Mapped[int] = mapped_column(default=0, server_default="0")
     failed_login_count: Mapped[int] = mapped_column(default=0, server_default="0")
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class AuditLog(Base):
+    """Değiştirilemez denetim kaydı (Faz 1 / G8). Yalnızca INSERT; UPDATE/DELETE engellenir."""
+
+    __tablename__ = "denetim_kayitlari"
+
+    id: Mapped[UUID] = uuid_column()
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
+    buro_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), index=True, nullable=True)
+    user_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), index=True, nullable=True)
+    mukellef_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
+    action: Mapped[str] = mapped_column(String(60), index=True)
+    outcome: Mapped[str] = mapped_column(String(20), default="success")
+    target_type: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    target_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    ip_address: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    details: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
 
 
 class KullaniciMukellef(Base, TimestampMixin):

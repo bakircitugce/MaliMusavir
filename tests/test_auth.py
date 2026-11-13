@@ -264,10 +264,17 @@ async def test_staff_cannot_change_other_users_password(
         json={"new_password": "Ele2026Gecirme"},
     )
     assert res.status_code == 404
+    # Kendi şifresini değiştirmek mevcut şifreyi ister (çalınan token ile ele geçirmeye karşı).
+    url = f"/auth/users/{staff.user.id}/password"
+    missing = await api_client.post(url, headers=staff.headers(), json={"new_password": "KendiSifrem2026"})
+    wrong = await api_client.post(
+        url, headers=staff.headers(),
+        json={"new_password": "KendiSifrem2026", "current_password": "Yanlis2026xx"},
+    )
+    assert missing.status_code == wrong.status_code == 400
     own = await api_client.post(
-        f"/auth/users/{staff.user.id}/password",
-        headers=staff.headers(),
-        json={"new_password": "KendiSifrem2026"},
+        url, headers=staff.headers(),
+        json={"new_password": "KendiSifrem2026", "current_password": TEST_PASSWORD},
     )
     assert own.status_code == 200
 

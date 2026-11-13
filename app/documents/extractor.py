@@ -1,23 +1,46 @@
+import asyncio
 from dataclasses import asdict
 from decimal import Decimal
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.core.models import Belge
-from app.documents.ocr import OCRDependencyError, extract_image_text
-from app.documents.expense_slip import parse_expense_slip, expense_slip_metadata
-from app.documents.smm import parse_smm, smm_metadata
 from app.documents.classifier import classify_document
+from app.documents.expense_slip import expense_slip_metadata, parse_expense_slip
+from app.documents.ocr import OCRDependencyError, extract_image_text
 from app.documents.pdf import PDFExtractionError, extract_pdf_text
+from app.documents.smm import parse_smm, smm_metadata
 from app.documents.spreadsheet import SpreadsheetReadError, read_spreadsheet
 from app.documents.storage import Storage
 from app.documents.ubl import UBLParseError, parse_ubl_invoice
+from app.documents.vision import VisionError, VisionResult, read_receipt_image, receipt_metadata
 from app.documents.z_report import parse_z_report, z_report_metadata
 
 
 class DocumentExtractionError(ValueError):
     pass
+
+
+def _vision_classification(result: VisionResult) -> tuple[str, Decimal, list[str], str]:
+    types = {doc.document_type for doc in result.documents}
+    if types == {"z_raporu"}:
+        category = "z_report"
+    elif types <= {"perakende_fis", "pos_slip"}:
+        category = "retail_receipt"
+    else:
+        category = "mixed_receipts"
+    reasons = [
+        f"{index}. belge: {reason}"
+        for index, doc in enumerate(result.documents, start=1)
+        for reason in doc.review_reasons
+    ]
+    needs_review = any(doc.review_status == "needs_review" for doc in result.documents)
+    confidence = Decimal("0.5000") if needs_review else Decimal("0.9000")
+    status = "needs_review" if needs_review else "classified"
+    reasons = reasons or [f"{len(result.documents)} belge yerel modelle okundu, kontroller geçti."]
+    return category, confidence, reasons, status
 
 
 def _json_value(value: Any) -> Any:
@@ -43,6 +66,7 @@ async def extract_document(
 ) -> Belge:
     document.extraction_status = "processing"
     await session.commit()
+    vision_result: VisionResult | None = None
     try:
         content = await storage.get(document.storage_key)
         if document.document_type == "ubl_xml":
@@ -58,6 +82,13 @@ async def extract_document(
             document.extraction_metadata = {
                 "extractor": "pypdf",
                 "page_count": result.page_count,
+            }
+        elif document.document_type == "image" and get_settings().vision_backend == "ollama":
+            vision_result = await asyncio.to_thread(read_receipt_image, content)
+            document.extracted_text = None
+            document.extraction_metadata = {
+                "extractor": f"ollama:{vision_result.model}",
+                "receipts": receipt_metadata(vision_result),
             }
         elif document.document_type == "image":
             result = extract_image_text(content)
@@ -83,12 +114,22 @@ async def extract_document(
         PDFExtractionError,
         SpreadsheetReadError,
         UBLParseError,
+        VisionError,
     ) as exc:
         document.extraction_status = "failed"
         document.extraction_metadata = {"error": str(exc)}
         await session.commit()
         raise DocumentExtractionError(str(exc)) from exc
     document.extraction_status = "completed"
+    if vision_result is not None:
+        category, confidence, reasons, status = _vision_classification(vision_result)
+        document.document_category = category
+        document.classification_confidence = confidence
+        document.classification_reasons = reasons
+        document.classification_status = status
+        await session.commit()
+        await session.refresh(document)
+        return document
     classification = classify_document(
         document.document_type,
         document.extracted_text,

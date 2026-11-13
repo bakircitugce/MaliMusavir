@@ -6,6 +6,7 @@ from fastapi import (
     File,
     HTTPException,
     Query,
+    Request,
     Response,
     UploadFile,
     status,
@@ -13,14 +14,19 @@ from fastapi import (
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import audit
+from app.auth.deps import get_current_user
 from app.auth.deps import tenant_context as tenant_headers
 from app.core.db import get_session
-from app.core.models import Belge, Mukellef
+from app.core.models import Belge, Mukellef, User
+from app.core.safety import content_disposition
 from app.documents.extractor import DocumentExtractionError, extract_document
 from app.documents.queue import enqueue_extraction
 from app.documents.review import DocumentReviewInput, apply_document_review
 from app.documents.service import (
+    CANONICAL_MEDIA_TYPES,
     MAX_FILE_SIZE,
+    MAX_FILES_PER_UPLOAD,
     DuplicateDocumentError,
     receive_document,
 )
@@ -85,9 +91,11 @@ async def read_upload(upload: UploadFile) -> bytes:
 
 @router.post("/upload", status_code=201)
 async def upload_document(
+    request: Request,
     upload: UploadFile = File(...),
     tenant: tuple[UUID, UUID] = Depends(tenant_headers),
     session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
 ) -> dict[str, object]:
     buro_id, mukellef_id = tenant
     await validate_tenant(session, buro_id, mukellef_id)
@@ -109,18 +117,30 @@ async def upload_document(
         ) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    await audit.record(
+        session, "document.upload", request=request, user=user, mukellef_id=mukellef_id,
+        target_type="document", target_id=document.id,
+        details={"filename": document.original_filename, "sha256": document.sha256},
+    )
     enqueue_extraction(document.id, buro_id, mukellef_id)
     return serialize_document(document)
 
 
 @router.post("/upload-multi", status_code=201)
 async def upload_documents(
+    request: Request,
     uploads: list[UploadFile] = File(...),
     tenant: tuple[UUID, UUID] = Depends(tenant_headers),
     session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
 ) -> dict[str, object]:
     buro_id, mukellef_id = tenant
     await validate_tenant(session, buro_id, mukellef_id)
+    if len(uploads) > MAX_FILES_PER_UPLOAD:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Tek seferde en fazla {MAX_FILES_PER_UPLOAD} dosya yüklenebilir.",
+        )
     documents: list[dict[str, object]] = []
     for upload in uploads:
         content = await read_upload(upload)
@@ -141,6 +161,11 @@ async def upload_documents(
             ) from exc
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        await audit.record(
+            session, "document.upload", request=request, user=user, mukellef_id=mukellef_id,
+            target_type="document", target_id=document.id,
+            details={"filename": document.original_filename, "sha256": document.sha256},
+        )
         enqueue_extraction(document.id, buro_id, mukellef_id)
         documents.append(serialize_document(document))
     return {"documents": documents}
@@ -208,11 +233,21 @@ async def get_document_content(
         content = await storage.get(document.storage_key)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Belge içeriği bulunamadı.") from exc
+    # Yükleyenin bildirdiği Content-Type'a güvenilmez: tür, doğrulanmış belge türünden
+    # türetilir. Yalnızca PDF ve görseller tarayıcıda açılır, diğerleri indirilir.
+    # sandbox CSP'si içerik tarayıcıda açılsa bile script çalışmasını engeller.
+    if document.document_type == "image":
+        media_type = "image/png" if content.startswith(b"\x89PNG") else "image/jpeg"
+    else:
+        media_type = CANONICAL_MEDIA_TYPES.get(document.document_type, "application/octet-stream")
+    inline = document.document_type in {"pdf", "image"}
     return Response(
         content=content,
-        media_type=document.content_type,
+        media_type=media_type,
         headers={
-            "Content-Disposition": f'inline; filename="{document.original_filename}"',
+            "Content-Disposition": content_disposition(document.original_filename, inline=inline),
+            "Content-Security-Policy": "sandbox; default-src 'none'; img-src 'self'",
+            "X-Content-Type-Options": "nosniff",
             "X-Document-SHA256": document.sha256,
         },
     )
@@ -246,8 +281,10 @@ async def extract_document_endpoint(
 async def review_document(
     document_id: UUID,
     review: DocumentReviewInput,
+    request: Request,
     tenant: tuple[UUID, UUID] = Depends(tenant_headers),
     session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
 ) -> dict[str, object]:
     buro_id, mukellef_id = tenant
     await validate_tenant(session, buro_id, mukellef_id)
@@ -261,6 +298,11 @@ async def review_document(
     if document is None:
         raise HTTPException(status_code=404, detail="Belge bulunamadı.")
     apply_document_review(document, review)
+    await audit.record(
+        session, "document.review", request=request, user=user, mukellef_id=mukellef_id,
+        target_type="document", target_id=document.id,
+        details={"review_status": document.review_status}, commit=False,
+    )
     await session.commit()
     await session.refresh(document)
     return serialize_document_detail(document)

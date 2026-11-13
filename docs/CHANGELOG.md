@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.3.0 — Faz 1: Güvenlik sağlamlaştırma (1. kısım)
+
+- Güvenlik başlıkları middleware'i: CSP (`script-src 'self'`), `X-Frame-Options`, `nosniff`,
+  `Referrer-Policy`, `Permissions-Policy`, COOP/CORP, API'de `Cache-Control: no-store`,
+  production'da HSTS. Production'da `/docs`, `/redoc`, `/openapi.json` kapalı.
+- Belge içeriği uç noktası: Content-Type doğrulanmış belge türünden türetiliyor (yükleyenin
+  bildirdiği türe güvenilmiyor), PDF/görsel dışı dosyalar `attachment`, `sandbox` CSP,
+  başlık enjeksiyonuna kapalı `Content-Disposition`.
+- Panel: satır içi `onclick`/`onsubmit` kaldırıldı (olay delegasyonu); kullanıcı adında
+  `onclick` içinden XSS ve ERP alanlarında kaçırılmamış çıktı düzeltildi.
+- `defusedxml` ile XML ayrıştırma (DTD/XXE/billion laughs reddi); XLSX/ZIP zip bombası ve
+  güvensiz yol kontrolü; depolamada path traversal koruması; dosya adı uzantısı izin listesi.
+- `upload-multi` en fazla 20 dosya; banka içe aktarma dosyaları 10 MB sınırı; e-Fatura gönderim
+  içeriği 5 MB sınırı.
+- ERP CSV dışa aktarımında formül enjeksiyonu koruması.
+- Düzeltildi: Logo/CSV fiş ve referans numaraları Python `hash()` ile üretildiği için her
+  yeniden başlatmada değişiyordu; artık deterministik.
+- Kendi şifresini değiştirmek mevcut şifreyi gerektiriyor; IP bazlı giriş hız sınırı.
+- Append-only denetim kaydı (`denetim_kayitlari`) ve admin için `GET /auth/audit-log`.
+- ERP retry hatasında iç hata metni istemciye sızdırılmıyor.
+- Yerel görsel model (Ollama) ile fiş/Z raporu okuma modülü ve deterministik doğrulama
+  (KDV aritmetiği, ödeme toplamı, VKN/TCKN sağlaması, Z kümülatif zinciri) eklendi;
+  donanım yükü nedeniyle **varsayılan kapalıdır** (`VISION_BACKEND=tesseract`).
+
 ## 0.2.0 — Faz 0: Acil güvenlik kapatma
 
 - Token imza anahtarı koddan çıkarıldı; `AUTH_SECRET` zorunlu ve en az 32 bayt.

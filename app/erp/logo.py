@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from xml.dom import minidom
 
+from app.core.safety import stable_number
 from app.erp.adapter import ERPExportAdapter, ERPExportDocument, ERPExportResult
 
 
@@ -36,7 +37,7 @@ class LogoTigerERPExportAdapter(ERPExportAdapter):
 
         # TYPE: 4 = Mahsup Fişi, 1 = Tahsil, 2 = Tediye
         ET.SubElement(gl_slip, "TYPE").text = "4"
-        slip_number = f"M{dt.strftime('%Y%m')}{abs(hash(description)) % 90000 + 10000}"
+        slip_number = f"M{dt.strftime('%Y%m')}{stable_number(description, 90000) + 10000}"
         ET.SubElement(gl_slip, "NUMBER").text = slip_number
         ET.SubElement(gl_slip, "DATE").text = formatted_date
         ET.SubElement(gl_slip, "DOC_NUMBER").text = slip_number

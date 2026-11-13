@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import (  # noqa: E402
     create_async_engine,
 )
 
-from app.auth.router import login_limiter  # noqa: E402
+from app.auth.router import login_ip_limiter, login_limiter  # noqa: E402
 from app.core.db import get_session  # noqa: E402
 from app.core.models import Base  # noqa: E402
 from app.main import app  # noqa: E402
@@ -26,6 +26,7 @@ from app.main import app  # noqa: E402
 @pytest.fixture(autouse=True)
 def _reset_login_limiter() -> None:
     login_limiter.reset()
+    login_ip_limiter.reset()
 
 
 @pytest.fixture

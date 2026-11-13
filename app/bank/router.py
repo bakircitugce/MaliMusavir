@@ -24,6 +24,7 @@ from app.bank import (
 )
 from app.core.db import get_session
 from app.core.models import BankAccount, BankTransaction, Mukellef
+from app.core.safety import UnsafeArchiveError, check_zip_archive
 from app.ledger.draft import LedgerValidationError
 
 router = APIRouter(prefix="/bank", tags=["bank"])
@@ -176,6 +177,18 @@ async def get_transactions(
     return {"transactions": [_serialize_transaction(item) for item in transactions]}
 
 
+MAX_BANK_FILE_SIZE = 10 * 1024 * 1024
+
+
+async def _read_bank_file(file: UploadFile) -> bytes:
+    content = await file.read(MAX_BANK_FILE_SIZE + 1)
+    if len(content) > MAX_BANK_FILE_SIZE:
+        raise HTTPException(status_code=413, detail="Banka dosyası 10 MB sınırını aşamaz.")
+    if not content:
+        raise HTTPException(status_code=400, detail="Dosya boş olamaz.")
+    return content
+
+
 @router.post("/import/csv")
 async def import_csv(
     file: UploadFile,
@@ -185,7 +198,7 @@ async def import_csv(
 ) -> dict[str, int]:
     buro_id, mukellef_id = tenant
     await validate_tenant(session, buro_id, mukellef_id)
-    content = await file.read()
+    content = await _read_bank_file(file)
     try:
         result = await import_bank_csv(
             session,
@@ -208,12 +221,17 @@ async def import_xlsx(
 ) -> dict[str, int]:
     buro_id, mukellef_id = tenant
     await validate_tenant(session, buro_id, mukellef_id)
+    xlsx_bytes = await _read_bank_file(file)
+    try:
+        check_zip_archive(xlsx_bytes)
+    except UnsafeArchiveError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     try:
         result = await import_bank_xlsx(
             session,
             buro_id=buro_id,
             mukellef_id=mukellef_id,
-            xlsx_bytes=await file.read(),
+            xlsx_bytes=xlsx_bytes,
             bank_account_iban=iban,
         )
     except LedgerValidationError as exc:
@@ -235,7 +253,7 @@ async def import_mt940(
             session,
             buro_id=buro_id,
             mukellef_id=mukellef_id,
-            mt940_text=(await file.read()).decode("utf-8-sig"),
+            mt940_text=(await _read_bank_file(file)).decode("utf-8-sig"),
             bank_account_iban=iban,
         )
     except (UnicodeDecodeError, LedgerValidationError) as exc:

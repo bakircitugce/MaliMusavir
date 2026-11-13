@@ -1,18 +1,26 @@
 from hashlib import sha256
 from pathlib import PurePosixPath
 from uuid import UUID, uuid4
-from zipfile import BadZipFile, ZipFile
-from io import BytesIO
-from xml.etree import ElementTree
 
+from defusedxml import ElementTree
+from defusedxml.common import DefusedXmlException
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.models import Belge
-from app.documents.storage import LocalStorage, Storage
+from app.core.safety import UnsafeArchiveError, check_zip_archive
+from app.documents.storage import Storage
 
 MAX_FILE_SIZE = 25 * 1024 * 1024
+MAX_FILES_PER_UPLOAD = 20
+# Depolama anahtarına yalnızca bu uzantılar yazılır (dosya adından gelen veri güvenilmez).
+SAFE_SUFFIXES = {".xml", ".pdf", ".jpg", ".jpeg", ".png", ".csv", ".xls", ".xlsx", ".xlsm"}
+CANONICAL_MEDIA_TYPES = {
+    "pdf": "application/pdf",
+    "ubl_xml": "application/xml",
+    "spreadsheet": "application/octet-stream",
+}
 ALLOWED_TYPES = {
     "application/pdf": "pdf",
     "application/xml": "ubl_xml",
@@ -55,13 +63,18 @@ def validate_document_content(document_type: str, content: bytes) -> None:
             raise ValueError("Görüntü içeriği doğrulanamadı.")
     if document_type == "ubl_xml":
         try:
-            root = ElementTree.fromstring(content)
-        except ElementTree.ParseError as exc:
+            root = ElementTree.fromstring(content, forbid_dtd=True)
+        except (ElementTree.ParseError, DefusedXmlException) as exc:
             raise ValueError("XML içeriği doğrulanamadı.") from exc
         if root.tag.rsplit("}", 1)[-1] != "Invoice":
             raise ValueError("XML belgesi UBL Invoice olmalıdır.")
-    if document_type == "spreadsheet" and content[:2] != b"PK":
-        raise ValueError("XLSX içeriği doğrulanamadı.")
+    if document_type == "spreadsheet":
+        if content[:2] != b"PK":
+            raise ValueError("XLSX içeriği doğrulanamadı.")
+        try:
+            check_zip_archive(content)
+        except UnsafeArchiveError as exc:
+            raise ValueError(str(exc)) from exc
 
 
 async def receive_document(
@@ -95,7 +108,8 @@ async def receive_document(
         raise DuplicateDocumentError(existing.id)
 
     document_id = uuid4()
-    storage_key = f"{buro_id}/{mukellef_id}/{document_id}{PurePosixPath(filename).suffix.lower()}"
+    suffix = PurePosixPath(filename.replace("\\", "/")).suffix.lower()
+    storage_key = f"{buro_id}/{mukellef_id}/{document_id}{suffix if suffix in SAFE_SUFFIXES else ''}"
     await storage.put(storage_key, content)
     document = Belge(
         id=document_id,

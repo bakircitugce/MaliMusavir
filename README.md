@@ -31,6 +31,19 @@ uv run uvicorn app.main:app --reload
 - Token'lar PyJWT/HS256, varsayılan 8 saat geçerlidir. Çıkış, şifre değişikliği veya
   pasife alma tüm eski token'ları iptal eder.
 - 5 başarısız girişte hesap 15 dakika kilitlenir; giriş uçlarında hız sınırı vardır.
+- **Faz 1 sağlamlaştırma:** tüm yanıtlarda CSP (`script-src 'self'`, satır içi script yok),
+  `X-Frame-Options: DENY`, `nosniff`, `no-referrer`, API yanıtlarında `Cache-Control: no-store`;
+  production'da HSTS ve `/docs`/`/openapi.json` kapalı.
+- Yüklenen belge, yükleyenin bildirdiği Content-Type ile değil doğrulanmış türüyle sunulur;
+  yalnızca PDF/görsel tarayıcıda açılır, diğerleri indirilir; `sandbox` CSP'si uygulanır.
+- XML `defusedxml` ile (DTD/entity yasak), XLSX zip bombası kontrolüyle okunur; depolama
+  anahtarları kök dizin dışına çıkamaz; tek yüklemede en fazla 20 dosya, banka dosyası 10 MB.
+- ERP CSV dışa aktarımında formül enjeksiyonu (`=`, `+`, `-`, `@`) etkisizleştirilir.
+- Kullanıcı kendi şifresini değiştirirken mevcut şifreyi girmek zorundadır; IP bazlı giriş sınırı
+  (password spraying'e karşı) vardır.
+- Denetim kaydı (`denetim_kayitlari`, append-only): giriş/çıkış, kullanıcı oluşturma, şifre ve
+  durum değişikliği, mükellef ataması, belge yükleme/inceleme, ters kayıt, ERP retry, e-Fatura
+  gönderimi. Admin `GET /auth/audit-log` ile büro kayıtlarını görür.
 - Eski `yonetici/kullanici/stajyer` rolleri `admin/personel/personel` olarak okunur;
   `secure-db` bunları kalıcı olarak dönüştürür ve eski `admin@`/`muhasebe@` demo
   hesaplarını pasife alır.

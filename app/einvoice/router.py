@@ -1,15 +1,16 @@
 from datetime import date
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.deps import require_approver
+from app import audit
+from app.auth.deps import get_current_user, require_approver
 from app.auth.deps import tenant_context as tenant_headers
 from app.core.db import get_session
-from app.core.models import Mukellef
+from app.core.models import Mukellef, User
 from app.einvoice.adapter import EInvoiceQuery
 from app.einvoice.fake import FakeEInvoiceAdapter
 from app.einvoice.registry import einvoice_registry
@@ -46,7 +47,7 @@ class SyncRequest(BaseModel):
 
 class SubmitRequest(BaseModel):
     provider: str = "fake"
-    ubl_content: str
+    ubl_content: str = Field(min_length=1, max_length=5 * 1024 * 1024)
     approved: bool = False
 
 
@@ -100,8 +101,10 @@ async def sync_invoices(
 @router.post("/submit", dependencies=[Depends(require_approver)])
 async def submit_invoice(
     req: SubmitRequest,
+    request: Request,
     tenant: tuple[UUID, UUID] = Depends(tenant_headers),
     session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
 ) -> dict[str, object]:
     buro_id, mukellef_id = tenant
     await validate_tenant(session, buro_id, mukellef_id)
@@ -120,6 +123,11 @@ async def submit_invoice(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    await audit.record(
+        session, "einvoice.submit", request=request, user=user, mukellef_id=mukellef_id,
+        target_type="einvoice", target_id=doc.ettn,
+        details={"invoice_number": doc.invoice_number, "provider": req.provider},
+    )
     return {
         "ok": True,
         "ettn": doc.ettn,
