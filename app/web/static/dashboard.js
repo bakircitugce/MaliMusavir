@@ -119,6 +119,7 @@ async function initAuth() {
         currentUser = await res.json();
         await ensureMukellefSelected();
         loadRealDocuments();
+        loadMizanSummary();
         updateUserUI();
         return;
       }
@@ -239,6 +240,7 @@ async function performLogin(email, password) {
     localStorage.setItem("maliasistan_token", authToken);
     await ensureMukellefSelected();
     loadRealDocuments();
+    loadMizanSummary();
     updateUserUI();
     hideLoginModal();
     showToast(`Hoş geldiniz, ${currentUser.ad_soyad} (${ROLE_LABELS[currentUser.rol] || currentUser.rol})!`);
@@ -716,9 +718,9 @@ async function loadBankTransactions() {
       return;
     }
     const byAccount = Object.fromEntries(bankAccounts.map(a => [a.iban, a]));
-    const statusLabel = { unmatched: "Eşleşmedi", matched: "Eşleşti", ignored: "Yok sayıldı" };
+    const statusLabel = { unmatched: "Fişle eşleşmedi", matched: "Fişle eşleşti", ignored: "Yok sayıldı" };
     box.innerHTML = `
-      <p class="muted">${txs.length} hareket · son 300 gösteriliyor</p>
+      <p class="muted">${txs.length} hareket · son 300 gösteriliyor · <b>Fişle eşleşmedi</b>: hareketin karşılığı olan yevmiye fişi (ör. fatura tahsilatı veya ödemesi) henüz bağlanmadı.</p>
       <div class="table-responsive"><table class="data-table">
         <thead><tr><th>Tarih</th><th>Hesap</th><th>Açıklama</th><th class="num">Giriş</th><th class="num">Çıkış</th><th class="num">Bakiye</th><th>Durum</th></tr></thead>
         <tbody>${txs.slice(0, 300).map(t => {
@@ -730,7 +732,7 @@ async function loadBankTransactions() {
             <td class="num">${Number(t.debit) ? escapeHtml(formatTL(t.debit)) : ""}</td>
             <td class="num">${Number(t.credit) ? escapeHtml(formatTL(t.credit)) : ""}</td>
             <td class="num">${t.balance !== null ? escapeHtml(formatTL(t.balance)) : "-"}</td>
-            <td><span class="status-badge ${t.reconciliation_status === "matched" ? "active" : "inactive"}">${escapeHtml(statusLabel[t.reconciliation_status] || t.reconciliation_status)}</span></td>
+            <td><span title="Banka hareketinin karşılığı olan yevmiye fişi (fatura tahsilatı/ödemesi) bulunup bağlandı mı?" class="status-badge ${t.reconciliation_status === "matched" ? "active" : "inactive"}">${escapeHtml(statusLabel[t.reconciliation_status] || t.reconciliation_status)}</span></td>
           </tr>`;
         }).join("")}</tbody>
       </table></div>`;
@@ -902,17 +904,57 @@ function loadErpExports() {
 
 function loadTaxData() {
   fetch("/tax/parameters", { headers: getAuthHeaders() })
-    .then(r => r.ok ? r.json() : [])
-    .then(params => {
-      if ($("taxParametersList") && Array.isArray(params)) {
-        $("taxParametersList").innerHTML = params.map(p => `
+    .then(r => r.ok ? r.json() : { parameters: [] })
+    .then(data => {
+      const params = data.parameters || [];
+      if (!$("taxParametersList")) return;
+      $("taxParametersList").innerHTML = params.length
+        ? params.map(p => `
           <div class="table-row">
-            <span>${escapeHtml(p.anahtar)}</span>
-            <strong>%${escapeHtml(p.deger)}</strong>
-          </div>
-        `).join("") || '<div class="muted">Parametre bulunamadı.</div>';
-      }
+            <span>${escapeHtml(p.key)}<br><small class="muted">${escapeHtml(formatDate(p.start))} – ${p.end ? escapeHtml(formatDate(p.end)) : "yürürlükte"}</small></span>
+            <strong>${escapeHtml(p.value)}</strong>
+          </div>`).join("")
+        : '<div class="muted">Bu büro için tanımlı vergi parametresi yok. Oran ve hadler resmi kaynaktan (Resmî Gazete / GİB) doğrulanarak girilmelidir; sistem tahmini değer kullanmaz.</div>';
     }).catch(() => {});
+}
+
+// Mizan yükleme (Mükellef kartı)
+async function loadMizanSummary() {
+  if (!authToken || !selectedMukellefId) return;
+  try {
+    const res = await fetch("/chart/summary", { headers: getAuthHeaders() });
+    if (!res.ok) return;
+    const data = await res.json();
+    if ($("mizanAccountCount")) $("mizanAccountCount").textContent = `${data.accounts} hesap`;
+    if ($("mizanStatusPill")) {
+      $("mizanStatusPill").textContent = !data.accounts ? "Mizan yüklenmedi"
+        : (data.balanced ? "✓ Mizan tutuyor" : "⚠ Mizan tutmuyor");
+      $("mizanStatusPill").className = data.accounts && data.balanced ? "pill-green" : "pill-gray";
+    }
+  } catch (_) {}
+}
+
+function setupMizanUpload() {
+  const button = $("btnUploadMizan");
+  const input = $("mizanUploadInput");
+  if (!button || !input) return;
+  button.addEventListener("click", () => input.click());
+  input.addEventListener("change", async e => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = "";
+    if (!file) return;
+    const formData = new FormData();
+    formData.append("file", file);
+    showToast("Mizan okunuyor...");
+    const res = await fetch("/chart/mizan", { method: "POST", headers: tenantHeaders(), body: formData });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      showToast("Mizan okunamadı: " + (typeof data.detail === "string" ? data.detail : "hata"));
+      return;
+    }
+    showToast("✓ " + data.message);
+    loadMizanSummary();
+  });
 }
 
 function showToast(msg) {
@@ -962,6 +1004,7 @@ document.addEventListener("DOMContentLoaded", () => {
   setupDelegatedActions();
   setupLedgerTabs();
   setupBankUpload();
+  setupMizanUpload();
   setupDocumentActions();
   renderQueue();
   startDocumentPolling();

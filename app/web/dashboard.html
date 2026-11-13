@@ -331,11 +331,12 @@
                 <div class="panel-header-inline">
                   <h2 class="card-title">Mizan</h2>
                   <button class="btn-upload-dark" id="btnUploadMizan">📤 Mizan yükle</button>
+                  <input id="mizanUploadInput" type="file" accept=".xlsx,.csv" hidden>
                 </div>
 
                 <div class="mizan-badges-row">
-                  <span class="pill-green">✓ Mizan tutuyor</span>
-                  <span class="pill-gray">703 hesap</span>
+                  <span class="pill-gray" id="mizanStatusPill">Mizan yüklenmedi</span>
+                  <span class="pill-gray" id="mizanAccountCount">0 hesap</span>
                   <span class="pill-gray">Maliyet seçeneği: 7/A</span>
                 </div>
                 <p class="mizan-source-text">Dönem: 01.01.2026 - 31.12.2026 · Kaynak: mizan.xlsx</p>

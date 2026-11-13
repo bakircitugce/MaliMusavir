@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.1 — Mizan yükleme, banka durum etiketi, vergi ekranı
+
+- Mükellef kartındaki "Mizan yükle" butonu çalışıyor (önceden hiçbir işleve bağlı değildi
+  ve API'si yoktu): `POST /chart/mizan` Excel/CSV mizanı başlık satırını kendisi bularak
+  okur, hiyerarşik hesapları hesap planına aktarır (tekrar yükleme günceller), dengeyi
+  TOPLAM satırı / ana hesaplar üzerinden kontrol eder. `GET /chart/summary` ile kart rozetleri
+  gerçek veriyle doluyor.
+- Banka hareketlerinde "Eşleşmedi" yerine "Fişle eşleşmedi" ve açıklaması gösteriliyor.
+- Vergi & Hadler ekranı API ile uyumsuzdu (boş görünüyordu); parametreler yürürlük
+  tarihleriyle listeleniyor, parametre yoksa resmi kaynaktan girilmesi gerektiği belirtiliyor.
+
 ## 0.5.0 — Faz 2 / Adım 4: Evrensel banka ekstresi içe aktarma
 
 - `app/bank/statement_parser.py`: Excel (xlsx), CSV ve metin tabanlı PDF ekstreleri tek

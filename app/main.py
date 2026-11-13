@@ -7,6 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from app.auth.deps import enforce_default_policy
 from app.auth.router import router as auth_router
 from app.bank.router import router as bank_router
+from app.chart.router import router as chart_router
 from app.core.config import get_settings
 from app.core.db import engine
 from app.core.models import Base
@@ -69,6 +70,7 @@ for data_router in (
     ledger_router,
     tax_router,
     learning_router,
+    chart_router,
 ):
     app.include_router(data_router, dependencies=_protected)
 
