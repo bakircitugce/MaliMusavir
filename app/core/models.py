@@ -54,9 +54,31 @@ class User(Base, TimestampMixin):
     buro_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), index=True)
     email: Mapped[str] = mapped_column(String(320), unique=True, index=True)
     ad_soyad: Mapped[str] = mapped_column(String(200))
-    rol: Mapped[str] = mapped_column(String(30), default="kullanici")
+    rol: Mapped[str] = mapped_column(String(30), default="personel")
     password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     is_active: Mapped[bool] = mapped_column(default=True)
+    # Şifre değişikliği / çıkışta artırılır; eski token'lar geçersiz olur.
+    token_version: Mapped[int] = mapped_column(default=0, server_default="0")
+    failed_login_count: Mapped[int] = mapped_column(default=0, server_default="0")
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class KullaniciMukellef(Base, TimestampMixin):
+    """Personel ve mükellef rolündeki kullanıcıların erişebildiği mükellefler."""
+
+    __tablename__ = "kullanici_mukellefler"
+    __table_args__ = (
+        UniqueConstraint("user_id", "mukellef_id", name="uq_kullanici_mukellef"),
+    )
+
+    id: Mapped[UUID] = uuid_column()
+    buro_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), index=True)
+    user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("kullanicilar.id", ondelete="CASCADE"), index=True
+    )
+    mukellef_id: Mapped[UUID] = mapped_column(
+        ForeignKey("mukellefler.id", ondelete="CASCADE"), index=True
+    )
 
 
 class Mukellef(TenantModel):

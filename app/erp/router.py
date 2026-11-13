@@ -1,8 +1,11 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth.deps import require_approver
+from app.auth.deps import tenant_context as tenant_headers
 from app.core.db import get_session
 from app.core.models import Mukellef
 from app.erp import (
@@ -12,21 +15,10 @@ from app.erp import (
     list_export_records,
     retry_export,
 )
-from sqlalchemy import select
 
 router = APIRouter(prefix="/erp", tags=["erp"])
 
 
-async def tenant_headers(
-    x_buro_id: UUID | None = Header(default=None),
-    x_mukellef_id: UUID | None = Header(default=None),
-) -> tuple[UUID, UUID]:
-    if x_buro_id is None or x_mukellef_id is None:
-        raise HTTPException(
-            status_code=400,
-            detail="X-Buro-ID ve X-Mukellef-ID header'ları zorunludur.",
-        )
-    return x_buro_id, x_mukellef_id
 
 
 async def validate_tenant(
@@ -75,7 +67,7 @@ async def get_exports(
     }
 
 
-@router.post("/exports/{export_id}/retry")
+@router.post("/exports/{export_id}/retry", dependencies=[Depends(require_approver)])
 async def retry_failed_export(
     export_id: UUID,
     provider: str = Query(min_length=1),

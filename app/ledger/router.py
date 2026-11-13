@@ -2,10 +2,12 @@ from datetime import date
 from decimal import Decimal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth.deps import require_approver
+from app.auth.deps import tenant_context as tenant_headers
 from app.core.db import get_session
 from app.core.models import Mukellef
 from app.ledger.draft import LedgerValidationError
@@ -19,16 +21,6 @@ from app.ledger.trial_balance import trial_balance
 router = APIRouter(prefix="/ledger", tags=["ledger"])
 
 
-async def tenant_headers(
-    x_buro_id: UUID | None = Header(default=None),
-    x_mukellef_id: UUID | None = Header(default=None),
-) -> tuple[UUID, UUID]:
-    if x_buro_id is None or x_mukellef_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="X-Buro-ID ve X-Mukellef-ID header'ları zorunludur.",
-        )
-    return x_buro_id, x_mukellef_id
 
 
 async def validate_tenant(
@@ -159,7 +151,7 @@ async def get_trial_balance(
     }
 
 
-@router.post("/entries/{entry_id}/reverse")
+@router.post("/entries/{entry_id}/reverse", dependencies=[Depends(require_approver)])
 async def reverse_entry(
     entry_id: UUID,
     tenant: tuple[UUID, UUID] = Depends(tenant_headers),

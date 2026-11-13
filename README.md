@@ -7,18 +7,43 @@ SMMM büroları için çok kiracılı muhasebe otomasyon platformunun temel alty
 ```powershell
 uv sync
 Copy-Item .env.example .env
-uv run alembic upgrade head
+# .env içindeki AUTH_SECRET'ı doldur (en az 32 bayt):
+uv run python -c "import secrets; print(secrets.token_urlsafe(48))"
+uv run python -m app.cli secure-db          # mevcut veritabanı varsa (Faz 0 geçişi)
+uv run python -m app.cli create-admin --email ad@buro.com --ad-soyad "Ad Soyad" --buro-unvan "Büro Unvanı"
 uv run uvicorn app.main:app --reload
 ```
+
+## Güvenlik modeli (Faz 0)
+
+- `AUTH_SECRET` ortam değişkeni zorunludur; yoksa veya 32 bayttan kısaysa uygulama açılmaz.
+- Varsayılan hesap yoktur. İlk yönetici `python -m app.cli create-admin` ile oluşturulur
+  (şifre gizli sorulur; en az 12 karakter, büyük/küçük harf ve rakam).
+- `/health`, `/auth/login` ve `/app` (statik panel) dışındaki her uç
+  `Authorization: Bearer <token>` ister.
+- Büro kimliği yalnızca token'dan alınır; `X-Buro-ID` header'ı yok sayılır.
+  Mükellef `X-Mukellef-ID` ile seçilir ve her istekte kullanıcının bürosuna ait olup
+  olmadığı ve kullanıcının erişimi doğrulanır. Yetkisiz erişim `404` döner.
+- Roller: `admin` (kullanıcı yönetimi + tümü), `musavir` (fiş ters kaydı, ERP/e-Fatura
+  gönderimi, tüm büro), `personel` (belge/inceleme/mutabakat, yalnızca atandığı
+  mükellefler), `mukellef` (atandığı mükellefi salt okuma). Atama:
+  `PUT /auth/users/{user_id}/mukellefler/{mukellef_id}` (yalnızca admin).
+- Token'lar PyJWT/HS256, varsayılan 8 saat geçerlidir. Çıkış, şifre değişikliği veya
+  pasife alma tüm eski token'ları iptal eder.
+- 5 başarısız girişte hesap 15 dakika kilitlenir; giriş uçlarında hız sınırı vardır.
+- Eski `yonetici/kullanici/stajyer` rolleri `admin/personel/personel` olarak okunur;
+  `secure-db` bunları kalıcı olarak dönüştürür ve eski `admin@`/`muhasebe@` demo
+  hesaplarını pasife alır.
 
 Sağlık kontrolü: `http://localhost:8000/health`
 
 Kullanıcı dostu onay kuyruğu: `http://localhost:8000/app`
 
-Gerçek bir tenant'ın belgelerini panelde açmak için:
+Panel giriş ekranıyla açılır; giriş sonrası kullanıcının erişebildiği ilk mükellef
+seçilir. Belirli bir mükellefi açmak için:
 
 ```text
-http://localhost:8000/app?buro_id=<BURO_UUID>&mukellef_id=<MUKELLEF_UUID>
+http://localhost:8000/app?mukellef_id=<MUKELLEF_UUID>
 ```
 
 Panel; güven skorunu, sistemin önerdiği yevmiye kaydını ve “Bu kayıt neden
@@ -108,7 +133,7 @@ tenant'ı header'lardan alır:
 
 ```powershell
 curl.exe -X POST http://localhost:8000/documents/upload `
-  -H "X-Buro-ID: <BURO_UUID>" `
+  -H "Authorization: Bearer <TOKEN>" `
   -H "X-Mukellef-ID: <MUKELLEF_UUID>" `
   -F "upload=@fatura.xml"
 ```
@@ -121,7 +146,7 @@ Yüklenen belgeyi türüne göre işlemek için:
 
 ```powershell
 curl.exe -X POST http://localhost:8000/documents/<BELGE_UUID>/extract `
-  -H "X-Buro-ID: <BURO_UUID>" `
+  -H "Authorization: Bearer <TOKEN>" `
   -H "X-Mukellef-ID: <MUKELLEF_UUID>"
 ```
 

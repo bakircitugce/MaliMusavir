@@ -1,20 +1,16 @@
 from datetime import date
-from decimal import Decimal
 from uuid import uuid4
 
 import pytest
-from httpx import ASGITransport, AsyncClient
+from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from app.core.models import Base, Belge, Mukellef
+from app.core.models import Base
 from app.einvoice import (
-    EInvoiceDocument,
     EInvoiceQuery,
     FakeEInvoiceAdapter,
-    einvoice_registry,
     sync_incoming_invoices,
 )
-from app.main import app
 
 
 class InMemoryStorage:
@@ -85,12 +81,12 @@ async def test_sync_incoming_invoices_imports_and_extracts() -> None:
     await engine.dispose()
 
 
-@pytest.mark.asyncio
-async def test_einvoice_api_endpoints() -> None:
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
-        # Check providers
-        res = await client.get("/einvoice/providers")
-        assert res.status_code == 200
-        data = res.json()
-        assert "fake" in data["providers"]
+async def test_einvoice_api_endpoints(api_client: AsyncClient, db_factory) -> None:
+    from tests.auth_helpers import make_actor, make_buro
+
+    assert (await api_client.get("/einvoice/providers")).status_code == 401
+    buro_id = await make_buro(db_factory)
+    actor = await make_actor(db_factory, buro_id, rol="personel")
+    res = await api_client.get("/einvoice/providers", headers=actor.headers())
+    assert res.status_code == 200
+    assert "fake" in res.json()["providers"]

@@ -1,26 +1,26 @@
 from datetime import date
-from decimal import Decimal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth.deps import tenant_context as tenant_headers
 from app.bank import (
     BankAccountInput,
+    ignore_bank_transaction,
+    import_bank_csv,
+    import_bank_mt940,
+    import_bank_xlsx,
     list_bank_accounts,
     list_bank_transactions,
     list_reconciliation_candidates,
     list_reconciliation_group_candidates,
     list_reconciliation_queue,
-    summarize_reconciliation,
-    summarize_pos_aging,
-    import_bank_csv,
-    import_bank_mt940,
-    import_bank_xlsx,
-    ignore_bank_transaction,
     set_bank_account_status,
+    summarize_pos_aging,
+    summarize_reconciliation,
 )
 from app.core.db import get_session
 from app.core.models import BankAccount, BankTransaction, Mukellef
@@ -47,16 +47,6 @@ def _serialize_import_result(result: object) -> dict[str, int]:
     }
 
 
-async def tenant_headers(
-    x_buro_id: UUID | None = Header(default=None),
-    x_mukellef_id: UUID | None = Header(default=None),
-) -> tuple[UUID, UUID]:
-    if x_buro_id is None or x_mukellef_id is None:
-        raise HTTPException(
-            status_code=400,
-            detail="X-Buro-ID ve X-Mukellef-ID header'ları zorunludur.",
-        )
-    return x_buro_id, x_mukellef_id
 
 
 async def validate_tenant(

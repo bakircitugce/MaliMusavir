@@ -141,17 +141,40 @@ let currentUser = null;
 let authToken = localStorage.getItem("maliasistan_token") || "";
 
 const params = new URLSearchParams(location.search);
-const tenantHeaders = {
-  "X-Buro-ID": params.get("buro_id") || "",
-  "X-Mukellef-ID": params.get("mukellef_id") || ""
+// Büro kimliği yalnızca token'dan gelir; panel yalnızca seçili mükellefi gönderir.
+let selectedMukellefId = params.get("mukellef_id") || localStorage.getItem("maliasistan_mukellef") || "";
+
+const ROLE_LABELS = {
+  admin: "👑 Yönetici",
+  musavir: "🧾 Müşavir",
+  personel: "👤 Personel",
+  mukellef: "🔒 Mükellef (salt okuma)"
 };
+
+function tenantHeaders() {
+  const headers = {};
+  if (selectedMukellefId) headers["X-Mukellef-ID"] = selectedMukellefId;
+  if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
+  return headers;
+}
+
+async function ensureMukellefSelected() {
+  if (!authToken) return;
+  try {
+    const res = await fetch("/auth/me/mukellefler", { headers: tenantHeaders() });
+    if (!res.ok) return;
+    const list = await res.json();
+    if (!list.some(m => m.id === selectedMukellefId)) {
+      selectedMukellefId = list.length ? list[0].id : "";
+      localStorage.setItem("maliasistan_mukellef", selectedMukellefId);
+    }
+  } catch (_) {}
+}
 
 const $ = id => document.getElementById(id);
 
 function getAuthHeaders() {
-  const headers = { "Content-Type": "application/json", ...tenantHeaders };
-  if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
-  return headers;
+  return { "Content-Type": "application/json", ...tenantHeaders() };
 }
 
 // 2. Tab Navigation
@@ -223,45 +246,29 @@ async function initAuth() {
       const res = await fetch("/auth/me", { headers: getAuthHeaders() });
       if (res.ok) {
         currentUser = await res.json();
+        await ensureMukellefSelected();
         updateUserUI();
         return;
       }
     } catch (_) {}
   }
 
-  // Oturum yoksa varsayılan olarak Yönetici hesabını otomatik yükle veya login modalını aç
-  autoLoginDefaultAdmin();
-}
-
-async function autoLoginDefaultAdmin() {
-  try {
-    const res = await fetch("/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: "admin@maliasistan.com", password: "admin123" })
-    });
-    if (res.ok) {
-      const data = await res.json();
-      authToken = data.token;
-      currentUser = data.user;
-      localStorage.setItem("maliasistan_token", authToken);
-      updateUserUI();
-      return;
-    }
-  } catch (_) {}
+  // Geçerli oturum yoksa giriş ekranı açılır. Varsayılan hesap yoktur.
+  localStorage.removeItem("maliasistan_token");
+  authToken = "";
   showLoginModal();
 }
 
 function updateUserUI() {
   if (!currentUser) return;
 
-  const isYonetici = currentUser.rol === "yonetici";
+  const isYonetici = currentUser.rol === "admin";
   const name = currentUser.ad_soyad || "Kullanıcı";
   const initial = name.charAt(0).toUpperCase();
 
   if ($("userAvatar")) $("userAvatar").textContent = initial;
   if ($("headerUserName")) $("headerUserName").textContent = name;
-  if ($("headerUserRole")) $("headerUserRole").textContent = isYonetici ? "Yönetici" : "Kullanıcı";
+  if ($("headerUserRole")) $("headerUserRole").textContent = ROLE_LABELS[currentUser.rol] || currentUser.rol;
   if ($("todayGreeting")) $("todayGreeting").textContent = `İyi günler, ${name}`;
 
   // Yönetici Yetki Paneli
@@ -285,6 +292,8 @@ function hideLoginModal() {
 }
 
 function logout() {
+  // Sunucuda kullanıcının tüm token'ları iptal edilir (token_version artar).
+  if (authToken) fetch("/auth/logout", { method: "POST", headers: tenantHeaders() }).catch(() => {});
   localStorage.removeItem("maliasistan_token");
   authToken = "";
   currentUser = null;
@@ -293,20 +302,6 @@ function logout() {
 }
 
 function setupAuthEventListeners() {
-  // Hızlı Giriş Butonları
-  if ($("btnQuickAdmin")) {
-    $("btnQuickAdmin").addEventListener("click", () => performLogin("admin@maliasistan.com", "admin123"));
-  }
-  if ($("btnQuickUser")) {
-    $("btnQuickUser").addEventListener("click", () => performLogin("muhasebe@maliasistan.com", "user123"));
-  }
-  if ($("btnSwitchToAdmin")) {
-    $("btnSwitchToAdmin").addEventListener("click", () => performLogin("admin@maliasistan.com", "admin123"));
-  }
-  if ($("btnSwitchToUser")) {
-    $("btnSwitchToUser").addEventListener("click", () => performLogin("muhasebe@maliasistan.com", "user123"));
-  }
-
   // Manuel Giriş Formu
   if ($("btnSubmitLogin")) {
     $("btnSubmitLogin").addEventListener("click", () => {
@@ -370,9 +365,10 @@ async function performLogin(email, password) {
     authToken = data.token;
     currentUser = data.user;
     localStorage.setItem("maliasistan_token", authToken);
+    await ensureMukellefSelected();
     updateUserUI();
     hideLoginModal();
-    showToast(`Hoş geldiniz, ${currentUser.ad_soyad} (${currentUser.rol === 'yonetici' ? 'Yönetici' : 'Kullanıcı'})!`);
+    showToast(`Hoş geldiniz, ${currentUser.ad_soyad} (${ROLE_LABELS[currentUser.rol] || currentUser.rol})!`);
   } catch (err) {
     showLoginError("Sunucu bağlantı hatası oluştu.");
   }
@@ -390,7 +386,7 @@ async function loadUsersList() {
   const tbody = $("usersTableBody");
   if (!tbody) return;
 
-  if (!currentUser || currentUser.rol !== "yonetici") {
+  if (!currentUser || currentUser.rol !== "admin") {
     tbody.innerHTML = `<tr><td colspan="5" class="muted" style="text-align:center; padding: 24px;">Kullanıcı listesi yalnızca Yönetici tarafından görüntülenebilir.</td></tr>`;
     return;
   }
@@ -406,11 +402,8 @@ async function loadUsersList() {
 
     tbody.innerHTML = users.map(u => {
       const isMe = currentUser && currentUser.id === u.id;
-      const roleBadge = u.rol === "yonetici"
-        ? `<span class="role-badge admin">👑 Yönetici</span>`
-        : u.rol === "stajyer"
-        ? `<span class="role-badge intern">🎓 Stajyer</span>`
-        : `<span class="role-badge user">👤 Kullanıcı</span>`;
+      const roleClass = { admin: "admin", musavir: "admin", personel: "user", mukellef: "intern" }[u.rol] || "user";
+      const roleBadge = `<span class="role-badge ${roleClass}">${ROLE_LABELS[u.rol] || u.rol}</span>`;
 
       const statusBadge = u.is_active
         ? `<span class="status-badge active">Aktif</span>`
@@ -625,14 +618,15 @@ function uploadSelectedFile(file) {
   showToast("Belge yüklendi, İşleniyor...");
 
   const formData = new FormData();
-  formData.append("file", file);
+  formData.append("upload", file);
 
-  fetch("/extract", {
+  fetch("/documents/upload", {
     method: "POST",
-    headers: tenantHeaders,
+    headers: tenantHeaders(),
     body: formData
   })
-  .then(r => r.json())
+  .then(r => { if (!r.ok) throw new Error("upload"); return r.json(); })
+  .then(doc => fetch(`/documents/${doc.id}/extract`, { method: "POST", headers: tenantHeaders() }))
   .then(() => {
     showToast("✓ Belge kuyruğa eklendi!");
     loadRealDocuments();

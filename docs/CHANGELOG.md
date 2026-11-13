@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.2.0 — Faz 0: Acil güvenlik kapatma
+
+- Token imza anahtarı koddan çıkarıldı; `AUTH_SECRET` zorunlu ve en az 32 bayt.
+  Eski gömülü anahtar ifşa olmuş kabul edilir; mevcut tüm token'lar geçersizdir.
+- Açılışta `admin123`/`user123` şifreli varsayılan hesap oluşturma kaldırıldı.
+  `python -m app.cli create-admin` ve `python -m app.cli secure-db` komutları eklendi.
+- Tüm veri router'larında kimlik doğrulama zorunlu; herkese açık yollar yalnızca
+  `/health`, `/auth/login`, `/app`.
+- Kiracı izolasyonu: büro kimliği yalnızca token'dan; `X-Mukellef-ID` büro ve
+  kullanıcı ataması ile doğrulanıyor, yetkisiz erişim 404.
+- PyJWT'ye geçildi (`exp`, `iat`, `tv`); `token_version` ile çıkış/şifre değişikliği/
+  pasife almada token iptali. PBKDF2 600.000 iterasyon; eski özetler girişte yenileniyor.
+- Giriş hız sınırı, 5 hatalı denemede 15 dk hesap kilidi, kullanıcı yok/şifre yanlış
+  için aynı mesaj ve benzer yanıt süresi.
+- Rol modeli: admin / musavir / personel / mukellef; `kullanici_mukellefler` atama
+  tablosu ve atama uçları. Ters kayıt, ERP retry ve e-Fatura gönderimi müşavir/admin'e özel.
+- Düzeltildi: yöneticinin başka bürodaki kullanıcıların şifresini/durumunu
+  değiştirebilmesi; "admin" kısayolu ile rastgele yönetici hesabına giriş.
+- Panel: varsayılan hesapla otomatik giriş ve hızlı giriş düğmeleri kaldırıldı,
+  `X-Buro-ID` gönderimi kaldırıldı, belge yükleme doğru uca (`/documents/upload`)
+  token ile bağlandı.
+- Testler: token'sız route taraması, çapraz kiracı matrisi ve rol matrisi
+  (route'lar otomatik toplanır).
+
 ## 0.1.0 — Faz 0
 
 - FastAPI uygulama iskeleti ve `/health` endpoint'i eklendi.

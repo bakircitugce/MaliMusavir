@@ -4,7 +4,6 @@ from fastapi import (
     APIRouter,
     Depends,
     File,
-    Header,
     HTTPException,
     Query,
     Response,
@@ -14,32 +13,23 @@ from fastapi import (
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth.deps import tenant_context as tenant_headers
 from app.core.db import get_session
 from app.core.models import Belge, Mukellef
-from app.documents.service import (
-    DuplicateDocumentError,
-    MAX_FILE_SIZE,
-    receive_document,
-)
 from app.documents.extractor import DocumentExtractionError, extract_document
 from app.documents.queue import enqueue_extraction
 from app.documents.review import DocumentReviewInput, apply_document_review
+from app.documents.service import (
+    MAX_FILE_SIZE,
+    DuplicateDocumentError,
+    receive_document,
+)
 from app.documents.storage import LocalStorage
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 storage = LocalStorage()
 
 
-async def tenant_headers(
-    x_buro_id: UUID | None = Header(default=None),
-    x_mukellef_id: UUID | None = Header(default=None),
-) -> tuple[UUID, UUID]:
-    if x_buro_id is None or x_mukellef_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="X-Buro-ID ve X-Mukellef-ID header'ları zorunludur.",
-        )
-    return x_buro_id, x_mukellef_id
 
 
 async def validate_tenant(

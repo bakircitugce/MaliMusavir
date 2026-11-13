@@ -1,16 +1,18 @@
 from datetime import date
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth.deps import require_approver
+from app.auth.deps import tenant_context as tenant_headers
 from app.core.db import get_session
 from app.core.models import Mukellef
 from app.einvoice.adapter import EInvoiceQuery
-from app.einvoice.registry import einvoice_registry
 from app.einvoice.fake import FakeEInvoiceAdapter
+from app.einvoice.registry import einvoice_registry
 from app.einvoice.submission import submit_ubl_invoice
 from app.einvoice.sync_service import sync_incoming_invoices
 
@@ -21,16 +23,6 @@ if "fake" not in einvoice_registry.providers():
 router = APIRouter(prefix="/einvoice", tags=["einvoice"])
 
 
-async def tenant_headers(
-    x_buro_id: UUID | None = Header(default=None),
-    x_mukellef_id: UUID | None = Header(default=None),
-) -> tuple[UUID, UUID]:
-    if x_buro_id is None or x_mukellef_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="X-Buro-ID ve X-Mukellef-ID header'ları zorunludur.",
-        )
-    return x_buro_id, x_mukellef_id
 
 
 async def validate_tenant(
@@ -105,7 +97,7 @@ async def sync_invoices(
     }
 
 
-@router.post("/submit")
+@router.post("/submit", dependencies=[Depends(require_approver)])
 async def submit_invoice(
     req: SubmitRequest,
     tenant: tuple[UUID, UUID] = Depends(tenant_headers),
