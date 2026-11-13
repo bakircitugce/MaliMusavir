@@ -469,9 +469,9 @@ async def extract_document_endpoint(
     try:
         document = await extract_document(session, storage, document)
     except DocumentExtractionError as exc:
-        await process_after_extraction(session, document)
+        await process_after_extraction(session, document, storage)
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    await process_after_extraction(session, document)
+    await process_after_extraction(session, document, storage)
     await session.refresh(document)
     return serialize_document_detail(document)
 

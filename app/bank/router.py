@@ -1,11 +1,13 @@
 from datetime import date
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile, status
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import audit
+from app.auth.deps import get_current_user
 from app.auth.deps import tenant_context as tenant_headers
 from app.bank import (
     BankAccountInput,
@@ -22,8 +24,10 @@ from app.bank import (
     summarize_pos_aging,
     summarize_reconciliation,
 )
+from app.bank.statement_import import IbanRequiredError, import_statement
+from app.bank.statement_parser import StatementParseError
 from app.core.db import get_session
-from app.core.models import BankAccount, BankTransaction, Mukellef
+from app.core.models import BankAccount, BankTransaction, Mukellef, User
 from app.core.safety import UnsafeArchiveError, check_zip_archive
 from app.ledger.draft import LedgerValidationError
 
@@ -187,6 +191,52 @@ async def _read_bank_file(file: UploadFile) -> bytes:
     if not content:
         raise HTTPException(status_code=400, detail="Dosya boş olamaz.")
     return content
+
+
+@router.post("/import")
+async def import_any_statement(
+    request: Request,
+    file: UploadFile,
+    iban: str | None = Query(default=None, max_length=40),
+    tenant: tuple[UUID, UUID] = Depends(tenant_headers),
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> dict[str, object]:
+    """Excel / CSV / PDF ekstreyi biçimini kendisi tanıyarak içe aktarır.
+
+    IBAN dosyada yoksa `iban` parametresiyle verilmelidir (422 iban_required).
+    Hesap yoksa otomatik açılır (102.NN). Aynı hareket ikinci kez aktarılmaz.
+    """
+    buro_id, mukellef_id = tenant
+    content = await _read_bank_file(file)
+    if content[:2] == b"PK":
+        try:
+            check_zip_archive(content)
+        except UnsafeArchiveError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    try:
+        result = await import_statement(
+            session, buro_id=buro_id, mukellef_id=mukellef_id,
+            content=content, filename=file.filename or "", iban=iban,
+        )
+    except IbanRequiredError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "iban_required", "message": str(exc),
+                    "transactions": len(exc.statement.lines),
+                    "bank_name": exc.statement.bank_name},
+        ) from exc
+    except (StatementParseError, LedgerValidationError) as exc:
+        await session.rollback()
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    await audit.record(
+        session, "bank.import", request=request, user=user, mukellef_id=mukellef_id,
+        target_type="bank_account", target_id=result.iban,
+        details={"filename": file.filename, "created": result.created, "skipped": result.skipped},
+        commit=False,
+    )
+    await session.commit()
+    return {**result.as_dict(), "message": result.summary()}
 
 
 @router.post("/import/csv")

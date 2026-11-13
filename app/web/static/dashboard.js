@@ -681,19 +681,101 @@ function setupDocumentActions() {
 }
 
 // 8. Diğer Modül Yükleyicileri
-function loadBankData() {
-  fetch("/bank/accounts", { headers: getAuthHeaders() })
-    .then(r => r.ok ? r.json() : [])
-    .then(data => {
-      if ($("bankAccountsList") && Array.isArray(data)) {
-        $("bankAccountsList").innerHTML = data.map(a => `
+let bankAccounts = [];
+
+async function loadBankData() {
+  try {
+    const res = await fetch("/bank/accounts", { headers: getAuthHeaders() });
+    const data = res.ok ? await res.json() : { accounts: [] };
+    bankAccounts = data.accounts || [];
+    if ($("bankAccountsCount")) $("bankAccountsCount").textContent = `${bankAccounts.length} Hesap`;
+    if ($("bankAccountsList")) {
+      $("bankAccountsList").innerHTML = bankAccounts.length
+        ? bankAccounts.map(a => `
           <div class="table-row">
-            <div><strong>${escapeHtml(a.banka_adi || a.hesap_adi || 'Banka')}</strong><br><small class="muted">${escapeHtml(a.iban || '')}</small></div>
-            <strong class="num">${(a.bakiye || 0).toLocaleString("tr-TR", {minimumFractionDigits:2})} ₺</strong>
-          </div>
-        `).join("") || '<div class="muted">Kayıtlı hesap bulunamadı.</div>';
-      }
-    }).catch(() => {});
+            <div><strong>${escapeHtml(a.ledger_account_code)} · ${escapeHtml(a.bank_name)}</strong><br>
+              <small class="muted">${escapeHtml(a.iban)} · ${escapeHtml(a.account_name)}</small></div>
+            <span class="status-badge ${a.status === "active" ? "active" : "inactive"}">${a.status === "active" ? "Aktif" : "Pasif"}</span>
+          </div>`).join("")
+        : '<div class="muted">Henüz banka hesabı yok. "Ekstre Yükle" ile Excel, CSV veya PDF ekstre yüklediğinizde hesap otomatik açılır.</div>';
+    }
+  } catch (_) {}
+  loadBankTransactions();
+}
+
+async function loadBankTransactions() {
+  const box = $("reconcileQueue");
+  if (!box) return;
+  try {
+    const res = await fetch("/bank/transactions", { headers: getAuthHeaders() });
+    const data = res.ok ? await res.json() : { transactions: [] };
+    const txs = (data.transactions || [])
+      .sort((a, b) => (b.transaction_date || "").localeCompare(a.transaction_date || ""));
+    if (!txs.length) {
+      box.innerHTML = '<div class="loading">Henüz banka hareketi yok.</div>';
+      return;
+    }
+    const byAccount = Object.fromEntries(bankAccounts.map(a => [a.iban, a]));
+    const statusLabel = { unmatched: "Eşleşmedi", matched: "Eşleşti", ignored: "Yok sayıldı" };
+    box.innerHTML = `
+      <p class="muted">${txs.length} hareket · son 300 gösteriliyor</p>
+      <div class="table-responsive"><table class="data-table">
+        <thead><tr><th>Tarih</th><th>Hesap</th><th>Açıklama</th><th class="num">Giriş</th><th class="num">Çıkış</th><th class="num">Bakiye</th><th>Durum</th></tr></thead>
+        <tbody>${txs.slice(0, 300).map(t => {
+          const acc = byAccount[t.iban];
+          return `<tr>
+            <td>${escapeHtml(formatDate(t.transaction_date))}</td>
+            <td><small>${escapeHtml(acc ? acc.ledger_account_code + " " + acc.bank_name : t.iban)}</small></td>
+            <td><small>${escapeHtml((t.description || "").slice(0, 120))}</small></td>
+            <td class="num">${Number(t.debit) ? escapeHtml(formatTL(t.debit)) : ""}</td>
+            <td class="num">${Number(t.credit) ? escapeHtml(formatTL(t.credit)) : ""}</td>
+            <td class="num">${t.balance !== null ? escapeHtml(formatTL(t.balance)) : "-"}</td>
+            <td><span class="status-badge ${t.reconciliation_status === "matched" ? "active" : "inactive"}">${escapeHtml(statusLabel[t.reconciliation_status] || t.reconciliation_status)}</span></td>
+          </tr>`;
+        }).join("")}</tbody>
+      </table></div>`;
+  } catch (_) {
+    box.innerHTML = '<div class="loading">Banka hareketleri yüklenemedi.</div>';
+  }
+}
+
+async function importBankStatement(file, iban) {
+  if (file.size > 10 * 1024 * 1024) {
+    showToast("Ekstre dosyası 10 MB sınırını aşıyor.");
+    return;
+  }
+  const formData = new FormData();
+  formData.append("file", file);
+  const url = "/bank/import" + (iban ? `?iban=${encodeURIComponent(iban)}` : "");
+  showToast(`${file.name} okunuyor...`);
+  const res = await fetch(url, { method: "POST", headers: tenantHeaders(), body: formData });
+  const data = await res.json().catch(() => ({}));
+  if (res.status === 422 && data.detail && data.detail.code === "iban_required") {
+    const known = bankAccounts.map(a => `${a.ledger_account_code} ${a.bank_name}: ${a.iban}`).join("\n");
+    const answer = window.prompt(
+      `${data.detail.message}\n\n${known ? "Kayıtlı hesaplar:\n" + known + "\n\n" : ""}IBAN girin (TR ile başlayan):`
+    );
+    if (answer && answer.trim()) return importBankStatement(file, answer.trim());
+    showToast("İçe aktarma iptal edildi.");
+    return;
+  }
+  if (!res.ok) {
+    showToast("Ekstre okunamadı: " + (typeof data.detail === "string" ? data.detail : "hata"));
+    return;
+  }
+  showToast("✓ " + data.message + (data.warnings && data.warnings.length ? " ⚠ " + data.warnings.join(" ") : ""));
+  loadBankData();
+}
+
+function setupBankUpload() {
+  const input = $("bankUploadInput");
+  if (!input) return;
+  input.addEventListener("change", async e => {
+    for (const file of Array.from(e.target.files || [])) {
+      await importBankStatement(file);
+    }
+    e.target.value = "";
+  });
 }
 
 function loadLedgerData() {
@@ -879,6 +961,7 @@ document.addEventListener("DOMContentLoaded", () => {
   setupAuthEventListeners();
   setupDelegatedActions();
   setupLedgerTabs();
+  setupBankUpload();
   setupDocumentActions();
   renderQueue();
   startDocumentPolling();

@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.5.0 — Faz 2 / Adım 4: Evrensel banka ekstresi içe aktarma
+
+- `app/bank/statement_parser.py`: Excel (xlsx), CSV ve metin tabanlı PDF ekstreleri tek
+  giriş noktasından okunur; başlık satırı otomatik bulunur (üstteki hesap bilgisi blokları
+  atlanır), Türkçe sütun adları (Tarih/Hareket Tarihi, Açıklama, Tutar veya Borç/Alacak,
+  Bakiye, İşlem/Fiş No) tanınır, IBAN ve banka dosyadan çıkarılır, çok satırlı PDF
+  açıklamaları birleştirilir.
+- Bakiye zinciri doğrulaması (önceki bakiye + tutar = yeni bakiye); sıralama (eskiden
+  yeniye / yeniden eskiye) zincire göre otomatik belirlenir. TAKAY örneği: VakıfBank 457,
+  Ziraat 111, Yapı Kredi 70 hareket — zincir %100 tuttu.
+- `POST /bank/import`: biçimden bağımsız içe aktarma; hesap yoksa IBAN ile otomatik açılır
+  (102.01, 102.02 …); IBAN dosyada yoksa `iban_required` ile istenir; içerikten türetilen
+  kimlikle mükerrer hareket aktarılmaz; denetim kaydı.
+- Onay kuyruğuna yüklenen Excel/PDF ekstreler otomatik tanınıp bankaya aktarılır.
+- Panel / Banka & POS: "Ekstre Yükle" butonu artık çalışıyor (önceden hiçbir işleve bağlı
+  değildi); hesaplar ve hareketler listeleniyor; IBAN'sız ekstrede IBAN soruluyor.
+
 ## 0.4.0 — Faz 2: Gerçek belge işleme ve TDHP taslak yevmiye (1. kısım)
 
 - e-Fatura: VKN/TCKN artık GİB standardındaki `PartyIdentification/ID[@schemeID]`
