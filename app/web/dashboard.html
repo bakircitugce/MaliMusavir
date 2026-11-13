@@ -500,6 +500,7 @@
           <div class="ledger-tabs">
             <button class="tab-btn active" id="tabBtnTrialBalance">Canlı Mizan Tablosu</button>
             <button class="tab-btn" id="tabBtnJournalEntries">Onaylı Yevmiye Fişleri</button>
+            <button class="tab-btn" id="tabBtnCari">Cari Hesaplar</button>
           </div>
           <div id="ledgerTrialBalanceView" class="card panel-box full-box">
             <div class="panel-heading">
@@ -522,6 +523,23 @@
               <span class="muted">Ters kayıt (reversal) veya detay inceleme</span>
             </div>
             <div id="journalEntriesList" class="entries-list"></div>
+          </div>
+          <div id="ledgerCariView" class="card panel-box full-box" hidden>
+            <div class="panel-heading">
+              <h2>Cari Hesaplar (mükellefe özel alt kırılımlar)</h2>
+              <select id="cariFilter" class="form-input" style="max-width:220px">
+                <option value="">Tümü</option>
+                <option value="120">120 Alıcılar</option>
+                <option value="320">320 Satıcılar</option>
+              </select>
+            </div>
+            <p class="muted">Faturadaki VKN/TCKN için cari yoksa sistem, mükellefin mizanındaki numaralandırmadan kaldığı yerden ardışık yeni kod açar (ör. 120.01.045 → 120.01.046).</p>
+            <div class="table-responsive">
+              <table class="data-table">
+                <thead><tr><th>Hesap Kodu</th><th>Ünvan</th><th>VKN / TCKN</th><th class="num">Borç</th><th class="num">Alacak</th><th class="num">Bakiye</th><th>Açılış</th></tr></thead>
+                <tbody id="cariBody"></tbody>
+              </table>
+            </div>
           </div>
         </div>
 

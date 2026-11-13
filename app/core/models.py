@@ -160,6 +160,26 @@ class Hesap(TenantModel):
     acilis_alacagi: Mapped[Decimal] = mapped_column(Numeric(20, 2), default=0)
 
 
+class Cari(TenantModel):
+    """Mükellefe özel cari kart: karşı tarafın (VKN/TCKN) alt hesap koduyla eşleşmesi.
+
+    Örn. 120 Alıcılar altında 120.01.046 = "BERKAN ŞAHİN" (VKN 1497...).
+    """
+
+    __tablename__ = "cariler"
+    __table_args__ = (
+        UniqueConstraint("mukellef_id", "ana_hesap", "vkn_tckn", name="uq_cari_mukellef_vkn"),
+        UniqueConstraint("mukellef_id", "hesap_kodu", name="uq_cari_mukellef_kod"),
+    )
+
+    mukellef_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), index=True)
+    ana_hesap: Mapped[str] = mapped_column(String(10))  # 120, 320, 136, 336 ...
+    hesap_kodu: Mapped[str] = mapped_column(String(30), index=True)
+    unvan: Mapped[str] = mapped_column(String(250))
+    vkn_tckn: Mapped[str | None] = mapped_column(String(11), nullable=True, index=True)
+    otomatik: Mapped[bool] = mapped_column(default=True)
+
+
 class NaceCode(Base):
     __tablename__ = "nace_codes"
     __table_args__ = (UniqueConstraint("kod", "kaynak", name="uq_nace_kod_kaynak"),)

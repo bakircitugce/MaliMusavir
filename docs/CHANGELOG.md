@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.6.0 — Mükellefe özel cari hesap kırılımları
+
+- `cariler` tablosu: her mükellef için karşı taraf (VKN/TCKN) ↔ alt hesap kodu eşleşmesi
+  (örn. 120 Alıcılar → 120.01.046 BERKAN ŞAHİN).
+- Faturada cari yoksa otomatik açılır: kod, mükellefin kendi mizanındaki numaralandırmadan
+  kaldığı yerden ardışık verilir (120.01.045 → 120.01.046; farklı şemalar da izlenir, ör.
+  320.0012 → 320.0013); hiç alt hesap yoksa `<ana>.01.001`. Hesap planına da eklenir.
+- Mizanda aynı unvanlı hesap varsa yeni kod açılmaz, cari mevcut hesaba bağlanır
+  (şirket türü ekleri normalize edilir, sektör kelimeleri korunur).
+- Taslak yevmiyede 120/320 satırları artık cari kodu ve ünvanıyla geliyor; gerekçede
+  "Yeni cari açıldı: …" bilgisi var.
+- `GET /chart/cari` (onaylı fişlerden bakiye), `POST /chart/cari` (elle cari; kod verilmezse
+  ardışık atanır). Panel: Yevmiye & Mizan → "Cari Hesaplar" sekmesi.
+
 ## 0.5.1 — Mizan yükleme, banka durum etiketi, vergi ekranı
 
 - Mükellef kartındaki "Mizan yükle" butonu çalışıyor (önceden hiçbir işleve bağlı değildi

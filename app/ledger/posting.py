@@ -22,6 +22,7 @@ from typing import Any
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.chart.cari import get_or_create_cari
 from app.core.models import Belge, JournalEntry, JournalLine, Mukellef
 from app.documents.extraction import InvoiceData, InvoiceLineData, PartyData
 from app.learning.service import suggest_associations
@@ -208,15 +209,20 @@ async def build_invoice_draft(
                 f"{counterparty.name} için öğrenilmiş hesap yok; varsayılan 153 Ticari Mallar "
                 "önerildi. Gider ise 770 vb. olarak düzeltin."
             )
-        vkn = _norm_vkn(counterparty.tax_id)
+        cari = await get_or_create_cari(
+            session, buro_id=document.buro_id, mukellef_id=document.mukellef_id,
+            main_account="320", unvan=counterparty.name, vkn_tckn=counterparty.tax_id,
+        )
+        if cari.reason():
+            reasons.append(cari.reason())
         build = lambda: build_purchase_invoice_entry(  # noqa: E731
             invoice,
             expense_account_code=account[0],
             expense_account_name=account[1],
             vat_account_code=VAT_INPUT[0],
             vat_account_name=VAT_INPUT[1],
-            supplier_account_code=f"320.{vkn}" if vkn else "320",
-            supplier_account_name=f"Satıcılar - {counterparty.name or 'Satıcı'}",
+            supplier_account_code=cari.cari.hesap_kodu,
+            supplier_account_name=cari.cari.unvan,
             source_document_id=document.id,
         )
     else:
@@ -233,15 +239,20 @@ async def build_invoice_draft(
         else:
             account, confidence = DEFAULT_SALES_ACCOUNT, CONFIDENCE_STANDARD_SALES
             reasons.append("Standart satış kaydı: 120 Alıcılar / 600 Yurtiçi Satışlar / 391 KDV.")
-        vkn = _norm_vkn(counterparty.tax_id)
+        cari = await get_or_create_cari(
+            session, buro_id=document.buro_id, mukellef_id=document.mukellef_id,
+            main_account="120", unvan=counterparty.name, vkn_tckn=counterparty.tax_id,
+        )
+        if cari.reason():
+            reasons.append(cari.reason())
         build = lambda: build_sales_invoice_entry(  # noqa: E731
             invoice,
             revenue_account_code=account[0],
             revenue_account_name=account[1],
             vat_account_code=VAT_OUTPUT[0],
             vat_account_name=VAT_OUTPUT[1],
-            settlement_account_code=f"120.{vkn}" if vkn else "120",
-            settlement_account_name=f"Alıcılar - {counterparty.name or 'Alıcı'}",
+            settlement_account_code=cari.cari.hesap_kodu,
+            settlement_account_name=cari.cari.unvan,
             source_document_id=document.id,
         )
 

@@ -867,15 +867,38 @@ async function reverseEntry(entryId) {
   loadLedgerData();
 }
 
+async function loadCariList() {
+  const body = $("cariBody");
+  if (!body) return;
+  const filter = $("cariFilter") ? $("cariFilter").value : "";
+  try {
+    const res = await fetch("/chart/cari" + (filter ? `?ana_hesap=${filter}` : ""), { headers: getAuthHeaders() });
+    const data = res.ok ? await res.json() : { cari: [] };
+    const rows = data.cari || [];
+    body.innerHTML = rows.length ? rows.map(c => `
+      <tr>
+        <td><code>${escapeHtml(c.hesap_kodu)}</code></td>
+        <td>${escapeHtml(c.unvan)}</td>
+        <td>${escapeHtml(c.vkn_tckn || "-")}</td>
+        <td class="num">${Number(c.borc) ? escapeHtml(formatTL(c.borc)) : "-"}</td>
+        <td class="num">${Number(c.alacak) ? escapeHtml(formatTL(c.alacak)) : "-"}</td>
+        <td class="num"><strong>${escapeHtml(formatTL(c.bakiye))}</strong></td>
+        <td><small>${c.otomatik ? "Otomatik" : "Mizan / elle"}</small></td>
+      </tr>`).join("")
+      : '<tr><td colspan="7" class="muted" style="text-align:center;padding:24px;">Henüz cari yok. Fatura yüklendiğinde cariler otomatik açılır.</td></tr>';
+  } catch (_) {}
+}
+
 function setupLedgerTabs() {
-  const showTab = journal => {
-    if ($("ledgerTrialBalanceView")) $("ledgerTrialBalanceView").hidden = journal;
-    if ($("ledgerEntriesView")) $("ledgerEntriesView").hidden = !journal;
-    if ($("tabBtnTrialBalance")) $("tabBtnTrialBalance").classList.toggle("active", !journal);
-    if ($("tabBtnJournalEntries")) $("tabBtnJournalEntries").classList.toggle("active", journal);
+  const views = { tb: "ledgerTrialBalanceView", journal: "ledgerEntriesView", cari: "ledgerCariView" };
+  const buttons = { tb: "tabBtnTrialBalance", journal: "tabBtnJournalEntries", cari: "tabBtnCari" };
+  const showTab = name => {
+    Object.entries(views).forEach(([key, id]) => { if ($(id)) $(id).hidden = key !== name; });
+    Object.entries(buttons).forEach(([key, id]) => { if ($(id)) $(id).classList.toggle("active", key === name); });
+    if (name === "cari") loadCariList();
   };
-  if ($("tabBtnTrialBalance")) $("tabBtnTrialBalance").addEventListener("click", () => showTab(false));
-  if ($("tabBtnJournalEntries")) $("tabBtnJournalEntries").addEventListener("click", () => showTab(true));
+  Object.entries(buttons).forEach(([key, id]) => { if ($(id)) $(id).addEventListener("click", () => showTab(key)); });
+  if ($("cariFilter")) $("cariFilter").addEventListener("change", loadCariList);
   if ($("btnRefreshLedger")) $("btnRefreshLedger").addEventListener("click", () => {
     loadLedgerData();
     showToast("Mizan yenilendi.");

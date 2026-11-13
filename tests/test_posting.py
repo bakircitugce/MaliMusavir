@@ -141,7 +141,7 @@ async def test_purchase_invoice_flow_end_to_end(api_client: AsyncClient, office)
     assert _lines(item) == [
         ("153", "1000.00", "0.00"),
         ("191", "200.00", "0.00"),
-        (f"320.{SUPPLIER_VKN}", "0.00", "1200.00"),
+        ("320.01.001", "0.00", "1200.00"),
     ]
     assert item["invoice"]["supplier"]["tax_id"] == SUPPLIER_VKN
 
@@ -186,7 +186,7 @@ async def test_sales_invoice_is_ready_for_approval(api_client: AsyncClient, offi
     assert item["posting"]["direction"] == "sales"
     assert item["posting"]["status"] == "draft_ready"
     assert _lines(item) == [
-        (f"120.{CUSTOMER_VKN}", "1200.00", "0.00"),
+        ("120.01.001", "1200.00", "0.00"),
         ("600", "0.00", "1000.00"),
         ("391", "0.00", "200.00"),
     ]
