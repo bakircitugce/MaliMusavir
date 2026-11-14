@@ -9,10 +9,29 @@ uv sync
 Copy-Item .env.example .env
 # .env içindeki AUTH_SECRET'ı doldur (en az 32 bayt):
 uv run python -c "import secrets; print(secrets.token_urlsafe(48))"
-uv run python -m app.cli secure-db          # mevcut veritabanı varsa (Faz 0 geçişi)
+uv run python -m app.cli migrate            # şemayı kurar/günceller (önce yedek alır)
+uv run python -m app.cli secure-db          # eski demo hesapları varsa kapatır
 uv run python -m app.cli create-admin --email ad@buro.com --ad-soyad "Ad Soyad" --buro-unvan "Büro Unvanı"
 uv run uvicorn app.main:app --reload
 ```
+
+## Veritabanı şeması ve migration
+
+Şema yalnızca Alembic migration'larıyla değişir. Uygulama açılışta tablo **oluşturmaz**;
+veritabanı son şema sürümünde değilse açık bir mesajla başlamayı reddeder.
+
+`python -m app.cli migrate` veritabanının durumunu tespit eder:
+
+| Durum | Yapılan |
+|---|---|
+| Boş veritabanı | Sıfırdan `upgrade head` |
+| Eski (Alembic öncesi, `create_all` ile oluşmuş) ve 0001 baseline ile birebir aynı | Yedek → `stamp 0001` → `upgrade head` |
+| Eski sürümde (Alembic'li) | Yedek → `upgrade head` |
+| Güncel | İşlem yok |
+| **Kısmi şema** (eski DB'de `create_all` bazı yeni tabloları erken oluşturmuş) | Yedek alınır, **hiçbir değişiklik yapılmaz**, analiz ve kurtarma planı yazdırılır (çıkış kodu 2) |
+
+SQLite'ta yedek `backups/` altına otomatik alınır (çalışan bir süreç varken de tutarlı).
+Diğer veritabanlarında yedeği aldıktan sonra `--yedek-alindi` ile çalıştırın.
 
 ## Güvenlik modeli (Faz 0)
 

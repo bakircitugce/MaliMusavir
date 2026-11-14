@@ -10,7 +10,7 @@ from app.bank.router import router as bank_router
 from app.chart.router import router as chart_router
 from app.core.config import get_settings
 from app.core.db import engine
-from app.core.models import Base
+from app.core.schema_check import ensure_schema_ready
 from app.core.security_headers import SecurityHeadersMiddleware
 from app.documents.router import router as documents_router
 from app.einvoice.router import router as einvoice_router
@@ -30,10 +30,10 @@ PUBLIC_PATHS: frozenset[str] = frozenset({"/health", "/auth/login", "/app"})
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Faz 1'de Alembic migration'larıyla değiştirilecek. Varsayılan hesap
-    # oluşturulmaz; ilk yönetici `python -m app.cli create-admin` ile açılır.
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    # Şema açılışta KURULMAZ (create_all eski veritabanında kısmi şema üretiyordu).
+    # Yalnızca Alembic head'de olduğu doğrulanır; değilse uygulama açık bir mesajla durur:
+    # önce `python -m app.cli migrate`. İlk yönetici `python -m app.cli create-admin` ile açılır.
+    await ensure_schema_ready(engine)
     yield
 
 

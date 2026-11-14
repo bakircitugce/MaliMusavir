@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.7.0 — Part 2a: create_all kaynaklı kısmi şema riskinin kapatılması
+
+- Uygulama açılışında `create_all` kaldırıldı; yerine şema sürüm kontrolü geldi. Veritabanı
+  Alembic head'de değilse uygulama "önce `python -m app.cli migrate`" mesajıyla başlamaz
+  (eskiden eski bir veritabanında yeni tablolar oluşup sütunlar eklenmediği için uygulama
+  "no such column" ile çöküyor ve migration "table already exists" ile kilitleniyordu).
+- Yeni `python -m app.cli migrate`: boş / eski-temiz / eski sürüm / güncel / kısmi şema /
+  bilinmeyen sürüm durumlarını ayırt eder. Eski veritabanı yalnızca yapısı 0001 baseline ile
+  birebir doğrulanırsa `stamp` edilir. Kısmi şemada hiçbir değişiklik yapılmaz; yedek alınır ve
+  kurtarma planı raporlanır. SQLite için işlem öncesi tutarlı çevrim içi yedek.
+- `secure-db` ve `create-admin` artık şema kurmuyor; şema güncel değilse çalışmıyor.
+  `secure-db` içindeki Alembic dışı `ALTER TABLE` mantığı kaldırıldı (sütunlar 0001 baseline'ında).
+- `alembic/env.py`: hedef veritabanı programdan verilebiliyor (`config.attributes`).
+
 ## 0.6.0 — Mükellefe özel cari hesap kırılımları
 
 - `cariler` tablosu: her mükellef için karşı taraf (VKN/TCKN) ↔ alt hesap kodu eşleşmesi

@@ -7,14 +7,17 @@ from app.core.config import get_settings
 from app.core.models import Base
 
 config = context.config
-config.set_main_option("sqlalchemy.url", get_settings().database_url)
+# Hedef veritabanı programdan (config.attributes["database_url"]) verilebilir; `migrate`
+# komutu ve testler bu sayede uygulamanın varsayılan veritabanına dokunmadan çalışır.
+DATABASE_URL = config.attributes.get("database_url") or get_settings().database_url
+config.set_main_option("sqlalchemy.url", DATABASE_URL)
 
 target_metadata = Base.metadata
 
 
 def run_migrations_offline() -> None:
     context.configure(
-        url=get_settings().database_url,
+        url=DATABASE_URL,
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
