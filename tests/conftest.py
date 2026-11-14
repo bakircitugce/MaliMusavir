@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import (  # noqa: E402
 )
 
 from app.auth.router import login_ip_limiter, login_limiter  # noqa: E402
-from app.core.db import get_session  # noqa: E402
+from app.core.db import build_engine, get_session  # noqa: E402
 from app.core.models import Base  # noqa: E402
 from app.main import app  # noqa: E402
 
@@ -30,8 +30,14 @@ def _reset_login_limiter() -> None:
 
 
 @pytest.fixture
-async def db_factory() -> AsyncIterator[async_sessionmaker[AsyncSession]]:
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+async def db_factory(tmp_path) -> AsyncIterator[async_sessionmaker[AsyncSession]]:
+    # TEST_DB_MODE=file: üretimdeki gibi dosya tabanlı SQLite + BEGIN IMMEDIATE + bekleme
+    # süresi ile çalıştırır (transaction davranışı değişikliğinin tüm akışlara etkisini ölçmek
+    # için). Varsayılan: hızlı bellek içi SQLite.
+    if os.environ.get("TEST_DB_MODE") == "file":
+        engine = build_engine(f"sqlite+aiosqlite:///{tmp_path / 'test.sqlite3'}")
+    else:
+        engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     yield async_sessionmaker(engine, expire_on_commit=False)
