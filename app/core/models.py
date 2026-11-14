@@ -126,6 +126,34 @@ class TaxParameter(TenantModel):
     metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
 
 
+class HesapDonemi(TenantModel):
+    """Hesap dönemi (mali yıl). Yevmiye madde numarası her hesap döneminde 1'den başlar.
+
+    Varsayılan takvim yılıdır; özel hesap dönemi açıkça tanımlanır. Çakışma kontrolü
+    servis katmanındadır (SQLite tarih aralığı çakışma kısıtı desteklemez).
+    """
+
+    __tablename__ = "hesap_donemleri"
+    __table_args__ = (
+        CheckConstraint("status IN ('open', 'closed')", name="ck_hesap_donemi_status"),
+        CheckConstraint("start_date <= end_date", name="ck_hesap_donemi_tarih"),
+        UniqueConstraint("mukellef_id", "start_date", name="uq_hesap_donemi_mukellef_baslangic"),
+    )
+
+    mukellef_id: Mapped[UUID] = mapped_column(
+        ForeignKey("mukellefler.id", ondelete="RESTRICT", name="fk_hesap_donemi_mukellef"),
+        index=True,
+    )
+    start_date: Mapped[date] = mapped_column(Date)
+    end_date: Mapped[date] = mapped_column(Date)
+    status: Mapped[str] = mapped_column(String(20), default="open", server_default="open")
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    closed_by: Mapped[UUID | None] = mapped_column(
+        ForeignKey("kullanicilar.id", ondelete="SET NULL", name="fk_hesap_donemi_kapatan"),
+        nullable=True,
+    )
+
+
 class AccountingPeriod(TenantModel):
     __tablename__ = "muhasebe_donemleri"
     __table_args__ = (
@@ -145,6 +173,47 @@ class AccountingPeriod(TenantModel):
     start_date: Mapped[date] = mapped_column(Date)
     end_date: Mapped[date] = mapped_column(Date)
     status: Mapped[str] = mapped_column(String(20), default="open")
+    # Faz 2 / dönem modülü: eski kayıtlar için boş olabilir (geriye uyumluluk).
+    hesap_donemi_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("hesap_donemleri.id", ondelete="RESTRICT", name="fk_muhasebe_donemi_hesap_donemi"),
+        nullable=True,
+        index=True,
+    )
+    locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    locked_by: Mapped[UUID | None] = mapped_column(
+        ForeignKey("kullanicilar.id", ondelete="SET NULL", name="fk_muhasebe_donemi_kilitleyen"),
+        nullable=True,
+    )
+
+
+class NumaraSayaci(TenantModel):
+    """Transaction güvenli numara sayacı: mükellef + hesap dönemi + sayaç türü başına tek satır.
+
+    Numara, onay transaction'ı içinde bu satır kilitlenerek (PostgreSQL: SELECT ... FOR UPDATE)
+    artırılır; transaction geri alınırsa artış da geri alınır, numara kaybolmaz.
+    """
+
+    __tablename__ = "numara_sayaclari"
+    __table_args__ = (
+        UniqueConstraint(
+            "mukellef_id", "hesap_donemi_id", "sayac_turu", name="uq_numara_sayaci_kapsam"
+        ),
+        CheckConstraint(
+            "sayac_turu IN ('fis', 'yevmiye')",
+            name="ck_numara_sayaci_tur",
+        ),
+        CheckConstraint("son_numara >= 0", name="ck_numara_sayaci_pozitif"),
+    )
+
+    mukellef_id: Mapped[UUID] = mapped_column(
+        ForeignKey("mukellefler.id", ondelete="RESTRICT", name="fk_numara_sayaci_mukellef"),
+        index=True,
+    )
+    hesap_donemi_id: Mapped[UUID] = mapped_column(
+        ForeignKey("hesap_donemleri.id", ondelete="RESTRICT", name="fk_numara_sayaci_hesap_donemi"),
+    )
+    sayac_turu: Mapped[str] = mapped_column(String(20))
+    son_numara: Mapped[int] = mapped_column(default=0, server_default="0")
 
 
 class Hesap(TenantModel):
@@ -227,6 +296,21 @@ class JournalEntry(TenantModel):
             "status IN ('draft', 'pending_review', 'approved', 'reversed')",
             name="ck_yevmiye_fisi_status",
         ),
+        CheckConstraint(
+            "fis_turu IN ('mahsup', 'tahsil', 'tediye')", name="ck_yevmiye_fisi_fis_turu"
+        ),
+        CheckConstraint("fis_no IS NULL OR fis_no > 0", name="ck_yevmiye_fisi_fis_no"),
+        CheckConstraint("yevmiye_no IS NULL OR yevmiye_no > 0", name="ck_yevmiye_fisi_yevmiye_no"),
+        # Aynı mükellef + hesap döneminde fiş no ve yevmiye madde no çakışamaz.
+        # Karar (Part 1 review): mahsup/tahsil/tediye tek fiş no serisini paylaşır.
+        UniqueConstraint(
+            "mukellef_id", "hesap_donemi_id", "fis_no", name="uq_yevmiye_fisi_fis_no"
+        ),
+        UniqueConstraint(
+            "mukellef_id", "hesap_donemi_id", "yevmiye_no", name="uq_yevmiye_fisi_yevmiye_no"
+        ),
+        # Bir fiş en fazla bir kez terslenebilir.
+        UniqueConstraint("reversal_of_id", name="uq_yevmiye_fisi_ters_kayit"),
     )
 
     mukellef_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), index=True)
@@ -239,6 +323,24 @@ class JournalEntry(TenantModel):
     rule_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     rule_version: Mapped[str | None] = mapped_column(String(30), nullable=True)
     confidence: Mapped[Decimal | None] = mapped_column(Numeric(5, 4), nullable=True)
+    # --- Dönem ve numaralandırma (Faz 2 / dönem modülü) ---
+    hesap_donemi_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("hesap_donemleri.id", ondelete="RESTRICT", name="fk_yevmiye_fisi_hesap_donemi"),
+        nullable=True,
+        index=True,
+    )
+    fis_turu: Mapped[str] = mapped_column(String(10), default="mahsup", server_default="mahsup")
+    fis_no: Mapped[int | None] = mapped_column(nullable=True)  # onayda atanır
+    yevmiye_no: Mapped[int | None] = mapped_column(nullable=True)  # ay kilitlenince atanır
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    approved_by: Mapped[UUID | None] = mapped_column(
+        ForeignKey("kullanicilar.id", ondelete="SET NULL", name="fk_yevmiye_fisi_onaylayan"),
+        nullable=True,
+    )
+    reversal_of_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("yevmiye_fisleri.id", ondelete="RESTRICT", name="fk_yevmiye_fisi_ters_kayit"),
+        nullable=True,
+    )
 
 
 class JournalLine(TenantModel):

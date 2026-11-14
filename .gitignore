@@ -10,7 +10,6 @@ storage/
 .mypy_cache/
 .coverage
 htmlcov/
-alembic/versions/*.py
 # Customer workbooks stay local and are never committed.
 data/seed/*.xlsx
 data/seed/*.csv
