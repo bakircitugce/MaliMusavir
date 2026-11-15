@@ -1,6 +1,6 @@
 from datetime import date
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.models import AccountingPeriod, JournalEntry, JournalLine
@@ -89,12 +89,7 @@ async def persist_draft(
     mukellef_id,
     draft: JournalEntryDraft,
 ) -> JournalEntry:
-    validate_balanced(draft)
-    await ensure_period_open(
-        session,
-        mukellef_id=mukellef_id,
-        entry_date=draft.entry_date,
-    )
+    await validate_draft(session, mukellef_id=mukellef_id, draft=draft)
     entry = JournalEntry(
         buro_id=buro_id,
         mukellef_id=mukellef_id,
@@ -108,11 +103,27 @@ async def persist_draft(
     )
     session.add(entry)
     await session.flush()
+    _add_lines(session, entry, draft)
+    await session.flush()
+    return entry
+
+
+async def validate_draft(session: AsyncSession, *, mukellef_id, draft: JournalEntryDraft) -> None:
+    """Taslak yazılmadan önceki kontroller (denge, dönem kilidi). Veritabanına yazmaz."""
+    validate_balanced(draft)
+    await ensure_period_open(
+        session,
+        mukellef_id=mukellef_id,
+        entry_date=draft.entry_date,
+    )
+
+
+def _add_lines(session: AsyncSession, entry: JournalEntry, draft: JournalEntryDraft) -> None:
     for line_order, line in enumerate(draft.lines, start=1):
         session.add(
             JournalLine(
-                buro_id=buro_id,
-                mukellef_id=mukellef_id,
+                buro_id=entry.buro_id,
+                mukellef_id=entry.mukellef_id,
                 journal_entry_id=entry.id,
                 line_order=line_order,
                 account_code=line.account_code,
@@ -121,6 +132,38 @@ async def persist_draft(
                 credit=line.credit,
             )
         )
+
+
+async def replace_draft_content(
+    session: AsyncSession, *, entry: JournalEntry, draft: JournalEntryDraft
+) -> JournalEntry:
+    """Mevcut taslak fişin içeriğini yerinde günceller (D1a).
+
+    Fiş kimliği ve `created_at` korunur; başlık alanları güncellenir, satırlar aynı
+    transaction içinde yenilenir. Yalnızca `draft` durumundaki fişe uygulanır. Çağıran,
+    belge kilidini almış ve `validate_draft` ile doğrulamayı önceden yapmış olmalıdır;
+    burada da yeniden doğrulanır, böylece hata halinde hiçbir değişiklik yapılmaz.
+    """
+    if entry.status != "draft":
+        raise LedgerValidationError(
+            f"Yalnızca taslak fiş güncellenebilir; mevcut durum: {entry.status}."
+        )
+    if draft.source_document_id != entry.source_document_id:
+        raise LedgerValidationError("Taslak başka bir belgeye ait; güncellenemez.")
+    await validate_draft(session, mukellef_id=entry.mukellef_id, draft=draft)
+    entry.entry_date = draft.entry_date
+    entry.description = draft.description
+    entry.rule_name = draft.rule_name
+    entry.rule_version = draft.rule_version
+    entry.confidence = draft.confidence
+    await session.execute(
+        delete(JournalLine).where(
+            JournalLine.journal_entry_id == entry.id,
+            JournalLine.buro_id == entry.buro_id,
+            JournalLine.mukellef_id == entry.mukellef_id,
+        )
+    )
+    _add_lines(session, entry, draft)
     await session.flush()
     return entry
 
