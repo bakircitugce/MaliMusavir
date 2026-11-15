@@ -10,6 +10,10 @@ from app.core.config import get_settings
 # "database is locked" hatası verilir.
 SQLITE_BUSY_TIMEOUT_SECONDS = 30
 
+# Bağlantı bilgi sözlüğündeki işaret: bu DBAPI bağlantısında her transaction `BEGIN IMMEDIATE`
+# ile başlar. Kilit katmanı (app/core/locks.py) dosya SQLite'ta bu işaret yoksa çalışmayı reddeder.
+SQLITE_IMMEDIATE_INFO_KEY = "malimusavir_sqlite_begin_immediate"
+
 
 def is_file_sqlite(database_url: str) -> bool:
     url = make_url(database_url)
@@ -38,8 +42,9 @@ def configure_sqlite_transactions(engine: AsyncEngine) -> None:
     """
 
     @event.listens_for(engine.sync_engine, "connect")
-    def _disable_driver_begin(dbapi_connection, connection_record) -> None:  # noqa: ARG001
+    def _disable_driver_begin(dbapi_connection, connection_record) -> None:
         dbapi_connection.isolation_level = None
+        connection_record.info[SQLITE_IMMEDIATE_INFO_KEY] = True
 
     @event.listens_for(engine.sync_engine, "begin")
     def _begin_immediate(conn) -> None:

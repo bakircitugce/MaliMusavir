@@ -37,7 +37,7 @@ from app.ledger.draft import LedgerValidationError
 from app.ledger.posting import (
     PURCHASE_FEATURE,
     SALES_FEATURE,
-    existing_entry,
+    document_entries,
     post_document,
 )
 from app.ledger.service import approve_entry
@@ -226,7 +226,7 @@ def _invoice_summary(meta: dict) -> dict | None:
 
 async def _queue_item(session: AsyncSession, document: Belge) -> dict[str, object]:
     meta = document.extraction_metadata or {}
-    entry = await existing_entry(session, document)
+    entry = (await document_entries(session, document)).primary
     lines: list[dict[str, object]] = []
     if entry is not None:
         rows = await session.scalars(
@@ -311,11 +311,17 @@ async def approve_document(
     """Taslak fişi kesinleştirir (yalnızca müşavir/admin). Dönem kilidi ve denge kontrol edilir."""
     buro_id, mukellef_id = tenant
     document = await _tenant_document(session, document_id, buro_id, mukellef_id)
-    entry = await existing_entry(session, document)
+    entry = (await document_entries(session, document)).primary
     if entry is None or entry.status != "draft":
         raise HTTPException(
             status_code=409,
             detail="Onaylanacak taslak fiş yok. Önce hesabı düzeltip taslak oluşturun.",
+        )
+    posting = (document.extraction_metadata or {}).get("posting") or {}
+    if posting.get("stale_entry_id") == str(entry.id):
+        raise HTTPException(
+            status_code=409,
+            detail="Taslak fiş güncel değil (yeniden işleme doğrulamadan geçemedi); önce inceleyin.",
         )
     try:
         await approve_entry(session, buro_id=buro_id, mukellef_id=mukellef_id, entry_id=entry.id)
@@ -352,8 +358,12 @@ async def correct_document(
     if "invoice" not in (document.extraction_metadata or {}):
         raise HTTPException(status_code=422, detail="Bu belge türünde hesap düzeltme desteklenmiyor.")
     override = (correction.account_code, correction.account_name.strip())
-    result = await post_document(session, document, account_override=override)
+    # Transaction'ı _tenant_document başlattı (çağıran sahibi); post_document commit etmez.
+    result = await post_document(
+        session, document, account_override=override, trigger="duzeltme", commit=False
+    )
     if result.entry_id is None:
+        await session.commit()  # önceki davranış: başarısız denemenin sonucu belgeye yazılır
         raise HTTPException(status_code=422, detail=" ".join(result.reasons))
     document.review_note = correction.note
     await _learn(session, document, f"{override[0]}|{override[1]}"[:100])

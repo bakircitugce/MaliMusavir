@@ -88,7 +88,10 @@ async def process_after_extraction(session, document: Belge, storage: Storage | 
             and await _try_bank_statement(session, document, storage or LocalStorage())
         ):
             return
-        await post_document(session, document)
+        # Transaction'ı yukarıdaki refresh başlattı (çağıran sahibi): fiş üretimi commit=False
+        # ile bu transaction'da yapılır ve burada tek commit ile kapatılır.
+        await post_document(session, document, commit=False)
+        await session.commit()
     except Exception:  # noqa: BLE001
         logger.exception("Belge sonrası işlem yapılamadı: %s", document.id)
         await session.rollback()

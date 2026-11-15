@@ -14,15 +14,19 @@ Güven skoru eşiğin altındaysa belge `needs_review` olur ve nedeni kaydedilir
 Kullanıcının düzelttiği hesap, aynı karşı taraf için öğrenme hafızasına yazılır.
 """
 
+import hashlib
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
-from typing import Any
+from typing import Any, Self
 
-from sqlalchemy import delete, select
+from sqlalchemy import event, inspect, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import audit
 from app.chart.cari import get_or_create_cari
+from app.core.locks import lock_document
 from app.core.models import Belge, JournalEntry, JournalLine, Mukellef
 from app.documents.extraction import InvoiceData, InvoiceLineData, PartyData
 from app.learning.service import suggest_associations
@@ -30,7 +34,7 @@ from app.ledger.draft import JournalEntryDraft, LedgerValidationError
 from app.ledger.draft import JournalLine as DraftLine
 from app.ledger.rules.purchase_invoice import build_purchase_invoice_entry
 from app.ledger.rules.sales_invoice import build_sales_invoice_entry
-from app.ledger.service import persist_draft
+from app.ledger.service import persist_draft, replace_draft_content, validate_draft
 
 REVIEW_THRESHOLD = Decimal("0.80")
 CONFIDENCE_DEFAULT_ACCOUNT = Decimal("0.70")
@@ -52,15 +56,16 @@ POSTABLE_INVOICE_TYPES = {None, "SATIS", "ISTISNA"}
 
 @dataclass
 class PostingResult:
-    status: str  # draft_ready | needs_review | skipped
+    status: str  # draft_ready | needs_review | skipped | conflict
     reasons: list[str] = field(default_factory=list)
     entry_id: str | None = None
     confidence: Decimal | None = None
     direction: str | None = None
     account: str | None = None  # öğrenme için seçilen ana hesap (kod|ad)
+    stale_entry_id: str | None = None  # korunan ama güncel olmayan taslak
 
     def metadata(self) -> dict[str, Any]:
-        return {
+        data: dict[str, Any] = {
             "status": self.status,
             "reasons": self.reasons,
             "entry_id": self.entry_id,
@@ -68,6 +73,9 @@ class PostingResult:
             "direction": self.direction,
             "account": self.account,
         }
+        if self.stale_entry_id is not None:
+            data["stale_entry_id"] = self.stale_entry_id
+        return data
 
 
 def encode_account(code: str, name: str) -> str:
@@ -311,23 +319,133 @@ def build_z_report_draft(document: Belge, meta: dict[str, Any]) -> tuple[Journal
     )
 
 
-async def existing_entry(session: AsyncSession, document: Belge) -> JournalEntry | None:
-    return await session.scalar(
-        select(JournalEntry)
-        .where(
-            JournalEntry.buro_id == document.buro_id,
-            JournalEntry.mukellef_id == document.mukellef_id,
-            JournalEntry.source_document_id == document.id,
-            JournalEntry.status.in_(("draft", "pending_review", "approved")),
+ACTIVE_STATUSES = ("draft", "pending_review", "approved")
+_STATUS_ORDER = {"approved": 0, "pending_review": 1, "draft": 2}
+_CENT = Decimal("0.01")
+
+
+def is_reversal(entry: JournalEntry) -> bool:
+    """Ters kayıt mı? Yeni kayıtlar `reversal_of_id` ile, eski kayıtlar `rule_name` ile tanınır.
+
+    Eski ters kayıtların `rule_name` değeri `<orijinal>.reversal` veya `reversal` biçimindedir
+    (app/ledger/reversal.py). Part 3a/3f sonrası `kayit_turu = 'ters_kayit'` de eklenecek.
+    """
+    if entry.reversal_of_id is not None:
+        return True
+    return (entry.rule_name or "").endswith("reversal")
+
+
+@dataclass(frozen=True)
+class DocumentEntries:
+    """Bir belgeye bağlı fişler: aktif fişler ve ters kayıtlar ayrı, belirleyici sırayla."""
+
+    active: tuple[JournalEntry, ...]
+    reversals: tuple[JournalEntry, ...]
+
+    @property
+    def has_conflict(self) -> bool:
+        return len(self.active) > 1
+
+    @property
+    def primary(self) -> JournalEntry | None:
+        """Tek aktif fiş varsa odur; çakışmada da sıralamanın ilki (yalnızca gösterim için)."""
+        return self.active[0] if self.active else None
+
+
+async def document_entries(session: AsyncSession, document: Belge) -> DocumentEntries:
+    """Belgenin tüm aktif fişleri ve ters kayıtları.
+
+    Aktif: durum draft/pending_review/approved ve ters kayıt değil. Sıra: approved →
+    pending_review → draft, ardından `created_at`, ardından `id` (eşit zaman damgalarında da
+    belirleyici). Tek fiş varsayımı yapılmaz; çakışmayı çağıran değerlendirir.
+    """
+    rows = (
+        await session.scalars(
+            select(JournalEntry).where(
+                JournalEntry.buro_id == document.buro_id,
+                JournalEntry.mukellef_id == document.mukellef_id,
+                JournalEntry.source_document_id == document.id,
+            )
         )
-        .order_by(JournalEntry.created_at.desc())
+    ).all()
+    reversals = sorted((e for e in rows if is_reversal(e)), key=lambda e: (e.created_at, str(e.id)))
+    active = sorted(
+        (e for e in rows if not is_reversal(e) and e.status in ACTIVE_STATUSES),
+        key=lambda e: (_STATUS_ORDER[e.status], e.created_at, str(e.id)),
+    )
+    return DocumentEntries(tuple(active), tuple(reversals))
+
+
+def _amount(value: Decimal | int | None) -> Decimal:
+    return Decimal(str(value or 0)).quantize(_CENT)
+
+
+def line_fingerprint(entry_date: date, lines: Iterable[tuple[str, str, Any, Any]]) -> str:
+    """Fiş tarihi + sıralı satırlar (hesap kodu, adı, borç, alacak) için SHA-256 özeti."""
+    parts = [entry_date.isoformat()]
+    parts.extend(
+        f"{code}|{name}|{_amount(debit)}|{_amount(credit)}" for code, name, debit, credit in lines
+    )
+    return hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()
+
+
+def _draft_lines(draft: JournalEntryDraft) -> list[tuple[str, str, Decimal, Decimal]]:
+    return [(ln.account_code, ln.account_name, _amount(ln.debit), _amount(ln.credit))
+            for ln in draft.lines]
+
+
+async def _entry_lines(
+    session: AsyncSession, entry: JournalEntry
+) -> list[tuple[str, str, Decimal, Decimal]]:
+    rows = await session.scalars(
+        select(JournalLine)
+        .where(
+            JournalLine.journal_entry_id == entry.id,
+            JournalLine.buro_id == entry.buro_id,
+            JournalLine.mukellef_id == entry.mukellef_id,
+        )
+        .order_by(JournalLine.line_order)
+    )
+    return [(r.account_code, r.account_name, _amount(r.debit), _amount(r.credit)) for r in rows]
+
+
+def _same_header(entry: JournalEntry, draft: JournalEntryDraft) -> bool:
+    return (
+        entry.entry_date == draft.entry_date
+        and entry.description == draft.description
+        and entry.rule_name == draft.rule_name
+        and entry.rule_version == draft.rule_version
+        and entry.confidence == draft.confidence
     )
 
 
-async def _discard_draft(session: AsyncSession, entry: JournalEntry) -> None:
-    await session.execute(delete(JournalLine).where(JournalLine.journal_entry_id == entry.id))
-    await session.delete(entry)
-    await session.flush()
+def _target_review_status(document: Belge, result: PostingResult) -> str:
+    if document.review_status == "approved":
+        return "approved"
+    return "needs_review" if result.status == "needs_review" else "pending"
+
+
+class IslemSahipligiHatasi(RuntimeError):
+    """`commit` parametresi ile oturumun transaction durumu uyuşmuyor."""
+
+
+class _FlushTracker:
+    """Bu çağrı sırasında veritabanına bir değişiklik flush edildi mi?"""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session.sync_session
+        self.wrote = False
+
+    def _after_flush(self, session, flush_context) -> None:
+        if session.new or session.dirty or session.deleted:
+            self.wrote = True
+
+    def __enter__(self) -> Self:
+        event.listen(self._session, "after_flush", self._after_flush)
+        return self
+
+    def __exit__(self, *exc) -> None:
+        event.remove(self._session, "after_flush", self._after_flush)
 
 
 async def post_document(
@@ -335,15 +453,105 @@ async def post_document(
     document: Belge,
     *,
     account_override: tuple[str, str] | None = None,
+    commit: bool = True,
+    trigger: str = "otomatik_isleme",
 ) -> PostingResult:
-    """Belgeden taslak fiş üretir (idempotent). Onaylanmış fişe dokunmaz."""
+    """Belgeden taslak fiş üretir veya mevcut taslağı yerinde günceller (D1a).
+
+    Transaction sahipliği:
+
+    - `commit=True` (varsayılan) — fonksiyon sahibidir. Çağrı anında oturumda açık transaction ve
+      flush edilmemiş değişiklik OLMAMALIDIR (aksi halde `IslemSahipligiHatasi`, hiçbir işlem
+      yapılmadan). Fonksiyon transaction'ı kendisi başlatır ve her dönüş yolunda kapatır:
+      bir değişiklik yazıldıysa COMMIT, yazılmadıysa (çakışma, atlama, aynı içerik) ROLLBACK;
+      hata halinde ROLLBACK ve hata yeniden fırlatılır. Dönüşte transaction yoktur; SQLite
+      yazma kilidi (BEGIN IMMEDIATE) ve PostgreSQL satır kilidi bırakılmıştır.
+      Not: ROLLBACK, SQLAlchemy'de oturumdaki nesneleri "expired" yapar; sonraki erişim yeni
+      bir okuma (ve yeni bir transaction) başlatır.
+    - `commit=False` — çağıran sahibidir. Çağrı anında açık transaction OLMALIDIR (aksi halde
+      `IslemSahipligiHatasi`). Fonksiyon çağıranın transaction'ını asla commit/rollback etmez;
+      kendi işini bir SAVEPOINT içinde yapar: başarıda SAVEPOINT bırakılır (değişiklikler
+      çağıranın transaction'ında bekler), hatada yalnızca SAVEPOINT geri alınır (kısmi yazma
+      kalmaz, çağıranın önceki değişiklikleri korunur) ve hata yeniden fırlatılır. Kilitler
+      çağıran transaction'ı bitirene kadar tutulur.
+
+    İş kuralları (`_post_document_locked`):
+    - İlk iş belge satırını kilitlemektir; bütün kararlar kilit altında okunan veriye dayanır.
+    - Birden fazla aktif fiş (çakışma): hiçbir şey yazılmaz, `conflict` döner.
+    - Onaylı veya `pending_review` fiş: dokunulmaz, `skipped` döner.
+    - Tek taslak: içerik aynıysa hiçbir şey yazılmaz; farklıysa aynı fiş kaydı (kimlik ve
+      `created_at` korunarak) güncellenir ve eski/yeni satır parmak izi denetim kaydına yazılır.
+    - Doğrulama hatası veya kural yok: mevcut taslak korunur (silinmez), belge `needs_review`
+      olur ve taslak "güncel değil" (`stale_entry_id`) olarak işaretlenir.
+    """
+    if commit:
+        if session.in_transaction():
+            raise IslemSahipligiHatasi(
+                "Oturumda çağırana ait açık bir transaction var; commit=False kullanın ve "
+                "transaction'ı çağıran tarafta sonlandırın."
+            )
+        if session.new or session.dirty or session.deleted:
+            raise IslemSahipligiHatasi("Oturumda flush edilmemiş değişiklikler var.")
+        await session.begin()
+        with _FlushTracker(session) as tracker:
+            try:
+                result = await _post_document_locked(session, document, account_override, trigger)
+            except BaseException:
+                await session.rollback()
+                raise
+        if tracker.wrote:
+            await session.commit()
+        else:
+            await session.rollback()
+        return result
+
+    if not session.in_transaction():
+        raise IslemSahipligiHatasi(
+            "commit=False çağıranın açık transaction'ını gerektirir; transaction yok."
+        )
+    savepoint = await session.begin_nested()
+    try:
+        result = await _post_document_locked(session, document, account_override, trigger)
+    except BaseException:
+        await savepoint.rollback()
+        raise
+    await savepoint.commit()
+    return result
+
+
+async def _post_document_locked(
+    session: AsyncSession,
+    document: Belge,
+    account_override: tuple[str, str] | None,
+    trigger: str,
+) -> PostingResult:
+    """İş kuralları; transaction'ı asla başlatmaz veya sonlandırmaz (bkz. `post_document`)."""
+    # Önceki bir ROLLBACK nesneyi "expired" yapmış olabilir; async ortamda gizli IO yerine açıkça
+    # yeniden okunur. Bu okuma yalnızca kilit kapsamını (id/büro/mükellef) bulmak içindir; kararlar
+    # kilit altındaki okumaya dayanır.
+    if inspect(document).expired_attributes:
+        await session.refresh(document)
+    document = await lock_document(
+        session, buro_id=document.buro_id, mukellef_id=document.mukellef_id,
+        document_id=document.id,
+    )
     if document.extraction_status != "completed":
         result = PostingResult("needs_review", ["Belge okunamadı; elle giriş gerekli."])
         return await _save(session, document, result)
 
-    current = await existing_entry(session, document)
+    entries = await document_entries(session, document)
+    if entries.has_conflict:
+        return PostingResult(
+            "conflict",
+            [(f"Bu belgeye bağlı {len(entries.active)} aktif fiş var; çakışma çözülmeden "
+              "otomatik işlem yapılmaz.")],
+        )
+    current = entries.primary
     if current is not None and current.status == "approved":
         return PostingResult("skipped", ["Bu belgenin fişi zaten onaylanmış."], str(current.id))
+    if current is not None and current.status == "pending_review":
+        return PostingResult("skipped", ["Bu belgenin fişi incelemede; değiştirilmedi."],
+                             str(current.id))
 
     meta = document.extraction_metadata or {}
     mukellef = await session.scalar(
@@ -366,24 +574,66 @@ async def post_document(
              "kayıt kuralı yok; elle giriş gerekli."],
         )
 
-    if current is not None:
-        await _discard_draft(session, current)
     if draft is not None:
         try:
-            entry = await persist_draft(
-                session, buro_id=document.buro_id, mukellef_id=document.mukellef_id, draft=draft
-            )
-            result.entry_id = str(entry.id)
+            await validate_draft(session, mukellef_id=document.mukellef_id, draft=draft)
         except LedgerValidationError as exc:
             result = PostingResult("needs_review", [*result.reasons, str(exc)],
                                    direction=result.direction)
+            draft = None
+
+    if draft is None:
+        if current is not None:
+            # Taslak silinmez; güncel olmadığı işaretlenir (onayı D1b'de engellenir).
+            result.reasons.append("Mevcut taslak korundu ancak güncel değil; incelenmeli.")
+            result.stale_entry_id = str(current.id)
+        return await _save(session, document, result)
+
+    if current is None:
+        entry = await persist_draft(
+            session, buro_id=document.buro_id, mukellef_id=document.mukellef_id, draft=draft
+        )
+        result.entry_id = str(entry.id)
+        return await _save(session, document, result)
+
+    result.entry_id = str(current.id)
+    old_lines = await _entry_lines(session, current)
+    new_lines = _draft_lines(draft)
+    if old_lines == new_lines and _same_header(current, draft):
+        stored = meta.get("posting") or {}
+        if (
+            stored.get("entry_id") == result.entry_id
+            and stored.get("status") == result.status
+            and not stored.get("stale_entry_id")
+            and document.review_status == _target_review_status(document, result)
+        ):
+            return result  # aynı içerik: hiçbir yazma yok
+        return await _save(session, document, result)
+
+    old_fp = line_fingerprint(current.entry_date, old_lines)
+    await replace_draft_content(session, entry=current, draft=draft)
+    await audit.record(
+        session, "entry.draft_regenerated",
+        buro_id=document.buro_id, mukellef_id=document.mukellef_id,
+        target_type="journal_entry", target_id=current.id,
+        details={
+            "document_id": str(document.id),
+            "trigger": trigger,
+            "rule_name": draft.rule_name,
+            "old_fingerprint": old_fp,
+            "new_fingerprint": line_fingerprint(draft.entry_date, new_lines),
+            "old_line_count": len(old_lines),
+            "new_line_count": len(new_lines),
+        },
+        commit=False,
+    )
     return await _save(session, document, result)
 
 
 async def _save(session: AsyncSession, document: Belge, result: PostingResult) -> PostingResult:
+    """Belgeye sonucu yazar ve flush eder. Hiçbir zaman commit etmez (sahiplik çağırandadır)."""
     document.extraction_metadata = {**(document.extraction_metadata or {}),
                                     "posting": result.metadata()}
-    if document.review_status not in ("approved",):
-        document.review_status = "needs_review" if result.status == "needs_review" else "pending"
-    await session.commit()
+    document.review_status = _target_review_status(document, result)
+    await session.flush()
     return result
