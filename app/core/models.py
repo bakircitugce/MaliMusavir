@@ -16,7 +16,12 @@ from sqlalchemy import (
     Uuid,
     func,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+# JSON sütunları: SQLite'ta `JSON` (metin olarak saklanır), PostgreSQL'de indekslenebilir `JSONB`.
+# SQLite davranışı değişmez; tip yalnızca PostgreSQL lehçesinde JSONB'ye çözülür.
+JSONVariant = JSON().with_variant(JSONB(), "postgresql")
 
 
 class Base(DeclarativeBase):
@@ -80,7 +85,7 @@ class AuditLog(Base):
     target_type: Mapped[str | None] = mapped_column(String(40), nullable=True)
     target_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     ip_address: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    details: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    details: Mapped[dict[str, Any]] = mapped_column(JSONVariant, default=dict)
 
 
 class KullaniciMukellef(Base, TimestampMixin):
@@ -109,7 +114,7 @@ class Mukellef(TenantModel):
     vergi_dairesi: Mapped[str | None] = mapped_column(String(150))
     mukellef_turu: Mapped[str] = mapped_column(String(20))
     muhasebe_sistemi: Mapped[str] = mapped_column(String(3), default="7A")
-    nace_kodlari: Mapped[list[str]] = mapped_column(JSON, default=list)
+    nace_kodlari: Mapped[list[str]] = mapped_column(JSONVariant, default=list)
     defter_turu: Mapped[str | None] = mapped_column(String(50))
     e_fatura_durumu: Mapped[str | None] = mapped_column(String(30))
     e_arsiv_durumu: Mapped[str | None] = mapped_column(String(30))
@@ -123,7 +128,7 @@ class TaxParameter(TenantModel):
     deger: Mapped[Decimal] = mapped_column(Numeric(12, 6))
     baslangic_tarihi: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     bitis_tarihi: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSONVariant, default=dict)
 
 
 class HesapDonemi(TenantModel):
@@ -280,11 +285,11 @@ class Belge(TenantModel):
     status: Mapped[str] = mapped_column(String(30), default="received")
     extraction_status: Mapped[str] = mapped_column(String(30), default="pending")
     extracted_text: Mapped[str | None] = mapped_column(String, nullable=True)
-    extraction_metadata: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    extraction_metadata: Mapped[dict[str, Any]] = mapped_column(JSONVariant, default=dict)
     classification_status: Mapped[str] = mapped_column(String(30), default="pending")
     document_category: Mapped[str | None] = mapped_column(String(40), nullable=True)
     classification_confidence: Mapped[Decimal | None] = mapped_column(Numeric(5, 4), nullable=True)
-    classification_reasons: Mapped[list[str]] = mapped_column(JSON, default=list)
+    classification_reasons: Mapped[list[str]] = mapped_column(JSONVariant, default=list)
     review_status: Mapped[str] = mapped_column(String(30), default="pending")
     review_note: Mapped[str | None] = mapped_column(String(2000), nullable=True)
 
@@ -413,7 +418,7 @@ class LearnedAssociation(TenantModel):
     positive_count: Mapped[int] = mapped_column(default=0)
     negative_count: Mapped[int] = mapped_column(default=0)
     confidence: Mapped[Decimal] = mapped_column(Numeric(5, 4), default=0)
-    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSONVariant, default=dict)
 
 
 class BankTransaction(TenantModel):
