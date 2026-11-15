@@ -2,16 +2,17 @@ import asyncio
 import logging
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import inspect, select
 
 from app.bank.statement_import import IbanRequiredError, import_statement
 from app.bank.statement_parser import StatementParseError
 from app.core.db import session_factory
 from app.core.models import Belge
 from app.documents.extractor import extract_document
+from app.documents.pdf import PDFExtractionError
 from app.documents.storage import LocalStorage, Storage
 from app.ledger.draft import LedgerValidationError
-from app.ledger.posting import PostingResult, post_document
+from app.ledger.posting import IslemSahipligiHatasi, PostingResult, post_document
 
 logger = logging.getLogger(__name__)
 
@@ -39,9 +40,21 @@ async def _run_extraction(document_id: UUID, buro_id: UUID, mukellef_id: UUID) -
 
 
 async def _try_bank_statement(session, document: Belge, storage: Storage) -> bool:
-    """Belge bir banka ekstresiyse hareketleri içe aktarır. Ekstre değilse False döner."""
+    """Belge bir banka ekstresiyse hareketleri içe aktarır. Ekstre değilse False döner.
+
+    Transaction'ın sahibi değildir: asla commit veya rollback yapmaz. İçe aktarma denemesi bir
+    SAVEPOINT içinde yapılır; deneme başarısız olursa yalnızca SAVEPOINT geri alınır (kısmen
+    eklenmiş banka hesabı/hareketleri kalmaz), dış transaction açık kalır ve belge açıkça yeniden
+    okunur (geri alma sonrası "expired" alanlara erişim async ortamda gizli IO'ya dönüşmesin).
+    Not: `begin_nested()` bekleyen değişiklikleri SAVEPOINT'ten önce dış transaction'a flush eder;
+    bunlar SAVEPOINT geri alınsa da korunur.
+    """
     try:
         content = await storage.get(document.storage_key)
+    except FileNotFoundError:
+        return False
+    savepoint = await session.begin_nested()
+    try:
         result = await import_statement(
             session,
             buro_id=document.buro_id,
@@ -50,6 +63,8 @@ async def _try_bank_statement(session, document: Belge, storage: Storage) -> boo
             filename=document.original_filename,
         )
     except IbanRequiredError as exc:
+        await savepoint.rollback()
+        await session.refresh(document)
         posting = PostingResult(
             "needs_review",
             [f"{exc} Banka & POS sekmesinden IBAN belirterek yükleyin."],
@@ -59,11 +74,15 @@ async def _try_bank_statement(session, document: Belge, storage: Storage) -> boo
             **(document.extraction_metadata or {}), "posting": posting.metadata()
         }
         document.review_status = "needs_review"
-        await session.commit()
         return True
-    except (StatementParseError, LedgerValidationError, FileNotFoundError):
-        await session.rollback()
+    except (StatementParseError, LedgerValidationError, PDFExtractionError):
+        await savepoint.rollback()
+        await session.refresh(document)
         return False
+    except BaseException:
+        await savepoint.rollback()
+        raise
+    await savepoint.commit()
     posting = PostingResult("bank_imported", [result.summary(), *result.warnings])
     document.document_category = "bank_statement"
     document.extraction_metadata = {
@@ -73,12 +92,28 @@ async def _try_bank_statement(session, document: Belge, storage: Storage) -> boo
     }
     # Hareketler Banka & POS ekranında eşleştirilir; belge onay kuyruğundan çıkar.
     document.review_status = "approved" if not result.balance_mismatches else "needs_review"
-    await session.commit()
     return True
 
 
 async def process_after_extraction(session, document: Belge, storage: Storage | None = None) -> None:
-    """Okuma sonrası: ekstre ise bankaya aktar, değilse TDHP taslak yevmiye üret."""
+    """Okuma sonrası: ekstre ise bankaya aktar, değilse TDHP taslak yevmiye üret.
+
+    Okuma sonrası işlemin transaction sahibi bu fonksiyondur; yardımcılar (`_try_bank_statement`,
+    `post_document(commit=False)`) commit/rollback yapmaz. `extract_document` kendi yazmalarını
+    commit eder ve en sonda belgeyi yeniden okur; bu yüzden çağrı anında yalnızca okuma yapmış bir
+    transaction açık olabilir. Fonksiyon bu transaction'ı devralır ve her yolda kapatır: başarıda
+    tek COMMIT, hatada ROLLBACK. Çağıranın flush edilmemiş değişikliği varsa (yanlışlıkla commit
+    edilmesin diye) hiçbir işlem yapılmadan `IslemSahipligiHatasi` fırlatılır.
+
+    Hata yutulur ve loglanır; logda ORM nesnesi yerine önceden saklanan belge kimliği kullanılır
+    (geri alma sonrası nesne "expired" olabilir ve async ortamda okunamaz).
+    """
+    document_id = inspect(document).identity[0]
+    if session.new or session.dirty or session.deleted:
+        raise IslemSahipligiHatasi(
+            "process_after_extraction çağrılırken oturumda flush edilmemiş değişiklik var "
+            f"(belge {document_id}); bu değişiklikler sahibi tarafından sonlandırılmalı."
+        )
     try:
         await session.refresh(document)
         meta = document.extraction_metadata or {}
@@ -87,14 +122,16 @@ async def process_after_extraction(session, document: Belge, storage: Storage | 
             and "invoice" not in meta
             and await _try_bank_statement(session, document, storage or LocalStorage())
         ):
+            await session.commit()
             return
-        # Transaction'ı yukarıdaki refresh başlattı (çağıran sahibi): fiş üretimi commit=False
-        # ile bu transaction'da yapılır ve burada tek commit ile kapatılır.
         await post_document(session, document, commit=False)
         await session.commit()
-    except Exception:  # noqa: BLE001
-        logger.exception("Belge sonrası işlem yapılamadı: %s", document.id)
-        await session.rollback()
+    except Exception:
+        logger.exception("Belge sonrası işlem yapılamadı: %s", document_id)
+        try:
+            await session.rollback()
+        except Exception:
+            logger.exception("Belge sonrası işlemde rollback yapılamadı: %s", document_id)
 
 
 def enqueue_extraction(document_id: UUID, buro_id: UUID, mukellef_id: UUID) -> None:
